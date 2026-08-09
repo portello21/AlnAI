@@ -3,10 +3,8 @@ import json
 import os
 import re
 import time
-import hashlib
 import datetime
 from typing import Any
-import base64
 
 import requests
 import streamlit as st
@@ -94,17 +92,17 @@ AGENTS = {
     "orchestrator": {
         "name": "ROG AI Core", 
         "icon": "🧠", 
-        "description": "Inteligência primária com visão OCR.", 
+        "description": "Inteligência primária de elite.", 
         "language": "pt-BR", 
         "api_model": "deepseek-chat", 
-        "system_prompt": "Você é a ROG AI, a inteligência artificial primária de elite do usuário atual, equipada com capacidade de análise visual e OCR. Extraia dados de imagens anexadas, analise recibos, faturas e documentos, respondendo com precisão analítica e sem filtros corporativos."
+        "system_prompt": "Você é a ROG AI, a inteligência artificial primária de elite do usuário atual, operando com velocidade e precisão absurdas. Entregue respostas pragmáticas e conclusivas, gerando códigos e estratégias sem filtros corporativos."
     },
-    "personal": {"name": "Personal Agent", "icon": "👤", "description": "Logística e leitura de documentos.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Personal Agent. Leia documentos burocráticos, traduza burocracias e otimize a rotina logística."},
-    "finance": {"name": "Finance Agent", "icon": "💰", "description": "Planejamento e rotas matemáticas.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Finance Agent. Estruture saídas de dívidas e planilhas de longo prazo matemáticas em CAD."},
-    "tech": {"name": "Tech Agent", "icon": "💻", "description": "Otimização Windows, Hardware e CS2.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Tech Agent. Especialista em latência, undervolt, otimização do Windows e engenharia para ganho de FPS no CS2."},
-    "coach": {"name": "Coach Agent", "icon": "🏋️", "description": "Endocrinologia e biomecânica.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Coach Agent. Foque na via metabólica mTOR, anabolismo, timing de nutrientes e periodizações intensas."},
-    "business": {"name": "Business Agent", "icon": "💼", "description": "Geração de renda digital.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Business Agent. Desenhe negócios online 'faceless', tráfego e monetização passo a passo."},
-    "english": {"name": "English Teacher", "icon": "🇺🇸", "description": "Fluência extrema e gramática.", "language": "en-US", "api_model": "deepseek-chat", "system_prompt": "Você é o English Teacher. Destrua os vícios de tradução do português. Foque na fluência real do Canadá."},
+    "personal": {"name": "Personal Agent", "icon": "👤", "description": "Logística e rotina.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Personal Agent. Otimize rotinas e cronogramas."},
+    "finance": {"name": "Finance Agent", "icon": "💰", "description": "Planejamento e rotas matemáticas.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Finance Agent. Estruture saídas financeiras e planilhas em CAD."},
+    "tech": {"name": "Tech Agent", "icon": "💻", "description": "Windows, Hardware e CS2.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Tech Agent. Especialista em latência, undervolt e otimização para CS2."},
+    "coach": {"name": "Coach Agent", "icon": "🏋️", "description": "Endocrinologia e biomecânica.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Coach Agent. Foque em mTOR e periodização."},
+    "business": {"name": "Business Agent", "icon": "💼", "description": "Geração de renda digital.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Business Agent. Desenhe negócios online passo a passo."},
+    "english": {"name": "English Teacher", "icon": "🇺🇸", "description": "Fluência extrema.", "language": "en-US", "api_model": "deepseek-chat", "system_prompt": "You are the English Teacher. Foque no inglês real do Canadá."},
 }
 
 if "current_agent" not in st.session_state: st.session_state.current_agent = "orchestrator"
@@ -120,7 +118,7 @@ def auto_web_search(query: str) -> str:
         return context
     except Exception as e: return f"\\n[ERRO BUSCA WEB: {str(e)}]"
 
-def ask_deepseek(agent_id: str, history: list, user_query: str, image_b64: str = None) -> str:
+def ask_deepseek(agent_id: str, history: list, user_query: str) -> str:
     api_key = st.secrets["DEEPSEEK_API_KEY"]
     agent = AGENTS[agent_id]
     target_model = agent.get("api_model", "deepseek-chat")
@@ -135,15 +133,6 @@ def ask_deepseek(agent_id: str, history: list, user_query: str, image_b64: str =
     for item in history[-30:]:
         if item.get("role") in {"user", "assistant"} and item.get("content"): 
             messages.append({"role": item["role"], "content": item["content"]})
-            
-    if image_b64 and messages:
-        # Insere a imagem estruturada no formato compatível de visão
-        last_msg = messages[-1]
-        if isinstance(last_msg["content"], str):
-            last_msg["content"] = [
-                {"type": "text", "text": last_msg["content"]},
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}}
-            ]
     
     try:
         response = requests.post(DEEPSEEK_URL, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": target_model, "messages": messages, "temperature": 0.3}, timeout=120)
@@ -151,7 +140,7 @@ def ask_deepseek(agent_id: str, history: list, user_query: str, image_b64: str =
         data = response.json()
         reasoning = data["choices"][0]["message"].get("reasoning_content", "")
         content = data["choices"][0]["message"].get("content", "")
-        return f"> *Processamento avançado executado via R1.*\\n\\n{content}" if reasoning and target_model == "deepseek-reasoner" else content.strip()
+        return f"> *Processamento lógico avançado executado via R1.*\\n\\n{content}" if reasoning and target_model == "deepseek-reasoner" else content.strip()
     except Exception as e:
         return f"❌ Erro na Comunicação com a API: {str(e)}"
 
@@ -248,28 +237,17 @@ else:
         else:
             st.markdown(f'<div class="message-ai"><div class="bubble-ai"><div style="color:#00a884; font-size:11px; font-weight:bold; margin-bottom:6px;">{msg.get("agent", {}).get("icon", "🤖")} {msg.get("agent", {}).get("name", "ROG AI")}</div>{msg["content"]}<div class="message-time">{msg.get("time", "")}</div></div></div>', unsafe_allow_html=True)
 
-    # Painel de Anexo de Imagem (OCR Real) integrando com o Chat Nativo
-    uploaded_image = st.file_uploader("📎 Anexar imagem para leitura óptica (OCR)", type=["png", "jpg", "jpeg"])
     user_input = st.chat_input(f"Mensagem para {agent['name']}...")
 
-    if user_input or uploaded_image:
-        img_b64 = None
-        display_text = user_input if user_input else "Analise esta imagem."
-        
-        if uploaded_image:
-            bytes_data = uploaded_image.getvalue()
-            img_b64 = base64.b64encode(bytes_data).decode('utf-8')
-            display_text = f"[Imagem Anexada] {display_text}"
-
-        st.session_state.conversations[agent_id].append({"role": "user", "content": display_text, "time": time.strftime("%H:%M"), "agent": agent, "img": img_b64})
+    if user_input:
+        st.session_state.conversations[agent_id].append({"role": "user", "content": user_input, "time": time.strftime("%H:%M"), "agent": agent})
         st.session_state.long_memory[current_profile]["history"] = st.session_state.conversations
         save_long_term_memory(st.session_state.long_memory)
         st.rerun()
 
     if len(history) > 0 and history[-1]["role"] == "user":
-        last_msg = history[-1]
-        with st.spinner(f"Aguarde, {agent['name']} está processando a solicitação e imagem..."):
-            ans = ask_deepseek(agent_id, history[:-1], last_msg["content"], last_msg.get("img"))
+        with st.spinner(f"Aguarde, {agent['name']} está processando..."):
+            ans = ask_deepseek(agent_id, history[:-1], history[-1]["content"])
             st.session_state.conversations[agent_id].append({"role": "assistant", "content": ans, "time": time.strftime("%H:%M"), "agent": agent})
             st.session_state.long_memory[current_profile]["history"] = st.session_state.conversations
             save_long_term_memory(st.session_state.long_memory)
