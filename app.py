@@ -35,8 +35,29 @@ def init_supabase() -> Client | None:
 
 supabase = init_supabase()
 
-# MOTOR DE COOKIES GLOBAL: Fica ativo 100% do tempo para não perder o sincronismo.
+# MOTOR DE COOKIES GLOBAL
 cookie_manager = stx.CookieManager(key="rog_cookies")
+
+# TELA DE BOOT: Aguarda 1 segundo para o navegador enviar o cookie para o Python
+if "cookie_synced" not in st.session_state:
+    st.markdown('''
+    <style>
+    .stApp { background: radial-gradient(circle at 50% 10%, rgba(0,168,132,.08), transparent 35%), linear-gradient(180deg,#080d10,#0b141a) !important; color:#e9edef !important; }
+    [data-testid="stHeader"] { background:transparent !important; }
+    [data-testid="stSidebar"] { display: none; }
+    .loader-box { max-width:400px; margin: 150px auto; text-align:center; }
+    .rog-mark { width:64px; height:64px; margin:0 auto 16px; display:flex; align-items:center; justify-content:center; border-radius:18px; background:linear-gradient(145deg,#123d35,#0d211d); border:1px solid rgba(0,168,132,.45); color:#36d9b3; font-size:28px; font-weight:800; animation: pulse 1.2s infinite; }
+    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0,168,132, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(0,168,132, 0); } 100% { box-shadow: 0 0 0 0 rgba(0,168,132, 0); } }
+    </style>
+    <div class="loader-box">
+        <div class="rog-mark">R</div>
+        <div style="font-size:20px; font-weight:bold; color:#e9edef;">Sincronizando Sessão...</div>
+        <div style="font-size:12px; color:#00a884; margin-top:5px;">ROG AI Core</div>
+    </div>
+    ''', unsafe_allow_html=True)
+    time.sleep(1)
+    st.session_state.cookie_synced = True
+    st.rerun()
 
 # Inicialização de Variáveis de Sessão
 if "authenticated" not in st.session_state: st.session_state.authenticated = False
@@ -183,9 +204,7 @@ st.markdown('''
 
 # Lógica de Roteamento Isolado
 if not st.session_state.authenticated:
-    # Ler Cookies de forma global
     cookie_profile = cookie_manager.get(cookie="rog_ai_profile")
-    
     if cookie_profile in PASSWORDS:
         st.session_state.authenticated = True
         st.session_state.current_profile = cookie_profile
