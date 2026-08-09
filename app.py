@@ -3,12 +3,11 @@ import json
 import os
 import re
 import time
-import datetime
+import hashlib
 from typing import Any
 
 import requests
 import streamlit as st
-import extra_streamlit_components as stx
 from duckduckgo_search import DDGS
 from supabase import create_client, Client
 
@@ -35,43 +34,23 @@ def init_supabase() -> Client | None:
 
 supabase = init_supabase()
 
-# MOTOR DE COOKIES GLOBAL
-cookie_manager = stx.CookieManager(key="rog_cookies")
+# ================= ENGENHARIA DE SESSÃO NATIVA (TOKENS DE URL) =================
 
-# TELA DE BOOT: Aguarda 1 segundo para o navegador enviar o cookie para o Python
-if "cookie_synced" not in st.session_state:
-    st.markdown('''
-    <style>
-    .stApp { background: radial-gradient(circle at 50% 10%, rgba(0,168,132,.08), transparent 35%), linear-gradient(180deg,#080d10,#0b141a) !important; color:#e9edef !important; }
-    [data-testid="stHeader"] { background:transparent !important; }
-    [data-testid="stSidebar"] { display: none; }
-    .loader-box { max-width:400px; margin: 150px auto; text-align:center; }
-    .rog-mark { width:64px; height:64px; margin:0 auto 16px; display:flex; align-items:center; justify-content:center; border-radius:18px; background:linear-gradient(145deg,#123d35,#0d211d); border:1px solid rgba(0,168,132,.45); color:#36d9b3; font-size:28px; font-weight:800; animation: pulse 1.2s infinite; }
-    @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(0,168,132, 0.4); } 70% { box-shadow: 0 0 0 15px rgba(0,168,132, 0); } 100% { box-shadow: 0 0 0 0 rgba(0,168,132, 0); } }
-    </style>
-    <div class="loader-box">
-        <div class="rog-mark">R</div>
-        <div style="font-size:20px; font-weight:bold; color:#e9edef;">Sincronizando Sessão...</div>
-        <div style="font-size:12px; color:#00a884; margin-top:5px;">ROG AI Core</div>
-    </div>
-    ''', unsafe_allow_html=True)
-    time.sleep(1)
-    st.session_state.cookie_synced = True
-    st.rerun()
-
-# Inicialização de Variáveis de Sessão
 if "authenticated" not in st.session_state: st.session_state.authenticated = False
 if "current_profile" not in st.session_state: st.session_state.current_profile = None
-if "logout_requested" not in st.session_state: st.session_state.logout_requested = False
 
-# Tratamento de Logout
-if st.session_state.logout_requested:
-    cookie_manager.delete("rog_ai_profile")
-    st.session_state.authenticated = False
-    st.session_state.current_profile = None
-    st.session_state.logout_requested = False
-    time.sleep(0.5)
-    st.rerun()
+# Verificação Instantânea via URL (Sem delays de Cookie)
+if not st.session_state.authenticated:
+    url_token = st.query_params.get("auth")
+    if url_token:
+        for profile_name, password in PASSWORDS.items():
+            # Compara o token da URL com o Hash MD5 da senha real
+            if url_token == hashlib.md5(password.encode()).hexdigest():
+                st.session_state.authenticated = True
+                st.session_state.current_profile = profile_name
+                break
+
+# ================= DADOS E MEMÓRIA =================
 
 PROFILES = {
     "Allan": ["IDENTIDADE: Allan Vitor Portello, 26 anos (21/04/2000). Altura: 1.90m, Peso: ~118.9kg.", "FAMÍLIA: Casado com Beatriz (agronomia/A&W).", "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026).", "TRABALHO: Setor de limpeza no Canadá com colega Serdar. Sem diploma.", "METAS: Plano de CAD 5.000 (faculdade Beatriz) para set/2026. Troca do Mazda 3 (2012).", "TECH & GAMES: Joga CS2 competitivo. Monta PCs de alta performance.", "FITNESS: Musculação na Crunch Fitness. Dieta hiperproteica.", "ESTILO: Racional, lógico, sem clichês. Respostas densas e objetivas.", "MOEDA: Dólar Canadense (CAD)."],
@@ -204,29 +183,26 @@ st.markdown('''
 
 # Lógica de Roteamento Isolado
 if not st.session_state.authenticated:
-    cookie_profile = cookie_manager.get(cookie="rog_ai_profile")
-    if cookie_profile in PASSWORDS:
-        st.session_state.authenticated = True
-        st.session_state.current_profile = cookie_profile
-        st.rerun()
-
     st.markdown('''
     <div class="login-box">
         <div class="rog-mark">R</div>
         <div style="font-size:24px; font-weight:bold; margin-bottom:5px;">ROG AI</div>
-        <div style="font-size:12px; color:#8696a0; margin-bottom:20px;">Ambiente Isolado e Seguro</div>
+        <div style="font-size:12px; color:#8696a0; margin-bottom:20px;">Acesso Criptografado</div>
     ''', unsafe_allow_html=True)
     
     profile_choice = st.selectbox("Selecione sua conta", ["Allan", "Beatriz", "Natan", "Tainan"])
     input_pass = st.text_input("Senha", type="password")
-    lembrar_me = st.checkbox("Lembrar neste dispositivo")
+    lembrar_me = st.checkbox("Manter logado (Favoritar URL)")
     
     if st.button("Autenticar", use_container_width=True, type="primary"):
         if input_pass == PASSWORDS[profile_choice]:
-            if lembrar_me:
-                cookie_manager.set("rog_ai_profile", profile_choice, expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
             st.session_state.authenticated = True
             st.session_state.current_profile = profile_choice
+            
+            if lembrar_me:
+                # Gera um token seguro e embute na URL do navegador
+                st.query_params["auth"] = hashlib.md5(input_pass.encode()).hexdigest()
+            
             st.rerun()
         else:
             st.error("Senha incorreta.")
@@ -253,7 +229,9 @@ else:
                 
         st.markdown('<hr style="border-color:#263840; margin:15px 0;">', unsafe_allow_html=True)
         if st.button("↪ Encerrar Sessão", use_container_width=True):
-            st.session_state.logout_requested = True
+            st.query_params.clear() # Limpa a URL instantaneamente
+            st.session_state.authenticated = False
+            st.session_state.current_profile = None
             st.rerun()
 
     agent_id = st.session_state.current_agent
