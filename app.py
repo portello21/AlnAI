@@ -1,4 +1,6 @@
 import html
+import json
+import os
 import re
 import time
 from typing import Any
@@ -7,14 +9,78 @@ import requests
 import streamlit as st
 import streamlit.components.v2 as components
 
+# ============================================================
+# CONFIGURAÇÃO DE SEGURANÇA E PÁGINA
+# ============================================================
+
 st.set_page_config(
-    page_title="Allan AI",
-    page_icon="🤖",
+    page_title="Allan AI - Secure",
+    page_icon="🔒",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
+MEMORY_FILE = "long_term_memory.json"
+APP_PASSWORD = st.secrets.get("APP_PASSWORD", "Allan2026@Pass")
+
+# Controle de sessão autenticada
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+# ============================================================
+# TELA DE LOGIN / AUTENTICAÇÃO
+# ============================================================
+
+if not st.session_state.authenticated:
+    st.markdown("""
+    <style>
+    .stApp { background-color: #0b141a !important; color: #e9edef !important; }
+    .login-box { max-width: 400px; margin: 100px auto; padding: 30px; background: #202c33; border-radius: 12px; border: 1px solid #2a3942; text-align: center; }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("<div class='login-box'>", unsafe_allow_html=True)
+    st.title("🔒 Allan AI")
+    st.caption("Acesso Restrito ao Proprietário")
+    
+    input_pass = st.text_input("Senha de Acesso", type="password", key="login_input")
+    if st.button("Entrar no Sistema", use_container_width=True, type="primary"):
+        if input_pass == APP_PASSWORD:
+            st.session_state.authenticated = True
+            st.rerun()
+        else:
+            st.error("Senha incorreta. Acesso negado.")
+            
+    st.markdown("</div>", unsafe_allow_html=True)
+    st.stop()
+
+# ============================================================
+# GERENCIAMENTO DE MEMÓRIA DE LONGO PRAZO
+# ============================================================
+
+def load_long_term_memory() -> dict:
+    if os.path.exists(MEMORY_FILE):
+        try:
+            with open(MEMORY_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"user_facts": ["Usuário: Allan Vitor Portello", "Localização: Hamilton, Ontario, Canadá", "Moeda: CAD ($)"], "history": {}}
+
+def save_long_term_memory(memory_data: dict) -> None:
+    try:
+        with open(MEMORY_FILE, "w", encoding="utf-8") as f:
+            json.dump(memory_data, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+if "long_memory" not in st.session_state:
+    st.session_state.long_memory = load_long_term_memory()
+
+# ============================================================
+# AGENTES E ESTRUTURA DO SISTEMA
+# ============================================================
 
 AGENTS = {
     "orchestrator": {
@@ -72,7 +138,7 @@ if "current_agent" not in st.session_state:
     st.session_state.current_agent = "orchestrator"
 
 if "conversations" not in st.session_state:
-    st.session_state.conversations = {agent_id: [] for agent_id in AGENTS}
+    st.session_state.conversations = st.session_state.long_memory.get("history", {agent_id: [] for agent_id in AGENTS})
 
 if "speech_text" not in st.session_state:
     st.session_state.speech_text = ""
@@ -123,9 +189,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 def now_time() -> str: return time.strftime("%H:%M")
-def get_history(agent_id: str) -> list[dict[str, Any]]: return st.session_state.conversations[agent_id]
+def get_history(agent_id: str) -> list[dict[str, Any]]: return st.session_state.conversations.get(agent_id, [])
+
 def add_message(agent_id: str, role: str, content: str, agent: dict[str, Any] | None = None) -> None:
+    if agent_id not in st.session_state.conversations:
+        st.session_state.conversations[agent_id] = []
     st.session_state.conversations[agent_id].append({"role": role, "content": content, "time": now_time(), "agent": agent})
+    st.session_state.long_memory["history"] = st.session_state.conversations
+    save_long_term_memory(st.session_state.long_memory)
 
 def clean_for_speech(text: str) -> str:
     text = re.sub(r"`.*?`", " ", text, flags=re.S)
@@ -148,7 +219,11 @@ def ask_deepseek(agent_id: str, history: list[dict[str, Any]]) -> str:
     api_key = st.secrets["DEEPSEEK_API_KEY"]
     agent = AGENTS[agent_id]
 
-    messages = [{"role": "system", "content": agent["system_prompt"].strip()}]
+    # Injeção de Memória de Longo Prazo no System Prompt
+    memory_facts = "\n".join(st.session_state.long_memory.get("user_facts", []))
+    system_content = f"{agent['system_prompt'].strip()}\n\n[MEMÓRIA DE LONGO PRAZO DO USUÁRIO]:\n{memory_facts}"
+
+    messages = [{"role": "system", "content": system_content}]
     for item in history[-30:]:
         if item.get("role") in {"user", "assistant"} and item.get("content"):
             messages.append({"role": item["role"], "content": item["content"]})
@@ -257,6 +332,7 @@ export default function(component) {
 
 composer_component = components.component(name="allan_ai_composer", html=COMPOSER_HTML, css=COMPOSER_CSS, js=COMPOSER_JS)
 
+# BARRA LATERAL
 with st.sidebar:
     st.markdown('<div style="font-size:20px; font-weight:bold; color:#e9edef; padding:8px 0;">Allan AI</div><div style="font-size:11px; color:#8696a0; margin-bottom:12px;">Conversas ativas</div>', unsafe_allow_html=True)
     for a_id, a_data in AGENTS.items():
@@ -266,6 +342,11 @@ with st.sidebar:
             if not sel:
                 st.session_state.current_agent = a_id
                 st.rerun()
+
+    st.markdown("---")
+    if st.button("🔒 Sair do Sistema", use_container_width=True):
+        st.session_state.authenticated = False
+        st.rerun()
 
 agent_id = st.session_state.current_agent
 agent = AGENTS[agent_id]
