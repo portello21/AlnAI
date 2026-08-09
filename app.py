@@ -4,6 +4,7 @@ import os
 import re
 import time
 import datetime
+import hashlib
 from typing import Any
 
 import requests
@@ -101,7 +102,7 @@ AGENTS = {
     "finance": {"name": "Finance Agent", "icon": "💰", "description": "Planejamento e rotas matemáticas.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Finance Agent. Estruture saídas financeiras e planilhas em CAD."},
     "tech": {"name": "Tech Agent", "icon": "💻", "description": "Windows, Hardware e CS2.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Tech Agent. Especialista em latência, undervolt e otimização para CS2."},
     "coach": {"name": "Coach Agent", "icon": "🏋️", "description": "Endocrinologia e biomecânica.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Coach Agent. Foque em mTOR e periodização."},
-    "business": {"name": "Business Agent", "icon": "💼", "description": "Geração de renda digital.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Business Agent. Desenhe negócios online passo a passo."},
+    "business": {"name": "Business Agent", "icon": "💼", "description": "Geração de renda digital.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "You are the Business Agent. Desenhe negócios online passo a passo."},
     "english": {"name": "English Teacher", "icon": "🇺🇸", "description": "Fluência extrema.", "language": "en-US", "api_model": "deepseek-chat", "system_prompt": "You are the English Teacher. Foque no inglês real do Canadá."},
 }
 
