@@ -1,25 +1,64 @@
 import streamlit as st
 import requests
 
-st.set_page_config(page_title="Allan AI", page_icon="💬", layout="wide", initial_sidebar_state="expanded")
+# Configuração da página e layout
+st.set_page_config(
+    page_title="Allan AI",
+    page_icon="🤖",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Injeção CSS para visual limpo
+# Injeção de CSS para layout estilo aplicativo de mensagens (WhatsApp / Telegram Dark)
 st.markdown("""
     <style>
+    /* Ocultar elementos padrão do Streamlit */
     [data-testid="stHeader"], footer, #MainMenu { display: none !important; }
-    .block-container { padding-top: 1.5rem !important; padding-bottom: 2rem !important; }
-    .stApp { background-color: #0b141a !important; color: #e9edef !important; }
-    section[data-testid="stSidebar"] { background-color: #111b21 !important; border-right: 1px solid #222d34 !important; }
-    div[data-testid="stChatInput"] { background-color: #202c33 !important; border: 1px solid #2a3942 !important; border-radius: 8px !important; }
+    .block-container { padding-top: 1rem !important; padding-bottom: 5rem !important; max-width: 95% !important; }
+    
+    /* Cores de fundo e tipografia */
+    .stApp { background-color: #0b141a !important; color: #e9edef !important; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    
+    /* Barra lateral */
+    section[data-testid="stSidebar"] { 
+        background-color: #111b21 !important; 
+        border-right: 1px solid #222d34 !important; 
+    }
+    section[data-testid="stSidebar"] .stRadio > label { display: none; }
+    
+    /* Estilização das caixas de mensagem */
+    div[data-testid="stChatMessage"] {
+        background-color: #202c33 !important;
+        border-radius: 12px !important;
+        padding: 12px 16px !important;
+        margin-bottom: 10px !important;
+        border: 1px solid #2a3942 !important;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.2) !important;
+    }
+    
+    /* Caixa de entrada fixa no rodapé */
+    div[data-testid="stChatInput"] { 
+        background-color: #202c33 !important; 
+        border: 1px solid #00a884 !important; 
+        border-radius: 24px !important;
+        position: fixed !important;
+        bottom: 15px !important;
+    }
+    div[data-testid="stChatInput"] textarea {
+        color: #e9edef !important;
+    }
+    
+    /* Divisores */
+    hr { border-color: #222d34 !important; }
     </style>
 """, unsafe_allow_html=True)
 
-# Definição dos Agentes e Instruções
+# Estrutura dos Agentes
 AGENTS = {
     "🤖 Orquestrador (Auto)": {
-        "desc": "Triagem e roteamento geral da malha de agentes.",
+        "desc": "Triagem e roteamento dinâmico da malha.",
         "avatar": "🤖",
-        "system": "Você é o ORQUESTRADOR PRINCIPAL do Allan AI. Moeda padrão: CAD ($). Cidade: Hamilton/Ontario. Delegue ou responda direto com objetividade."
+        "system": "Você é o ORQUESTRADOR PRINCIPAL do Allan AI. Moeda padrão: CAD ($). Cidade: Hamilton/Ontario. Delegue ou responda direto com objetividade densa."
     },
     "👤 Personal Agent": {
         "desc": "Gestão de tempo, rotina e logística.",
@@ -53,36 +92,40 @@ AGENTS = {
     }
 }
 
-st.sidebar.title("💬 Allan AI")
-st.sidebar.caption("Conversas ativas:")
+# Sidebar - Seleção de Agente
+st.sidebar.markdown("### 💬 Allan AI")
+st.sidebar.caption("Selecione o agente:")
 
-selected_agent_name = st.sidebar.radio("Selecione a conversa:", list(AGENTS.keys()), label_visibility="collapsed")
+selected_agent_name = st.sidebar.radio("Agentes", list(AGENTS.keys()), label_visibility="collapsed")
 current_agent = AGENTS[selected_agent_name]
 
 if "messages" not in st.session_state:
     st.session_state.messages = {agent: [] for agent in AGENTS.keys()}
 
+# Header principal
 col1, col2 = st.columns([0.08, 0.92])
 with col1:
     st.title(current_agent["avatar"])
 with col2:
-    st.subheader(selected_agent_name)
+    st.markdown(f"### {selected_agent_name}")
     st.caption(current_agent["desc"])
 
 st.divider()
 
+# Exibição do histórico de mensagens
 for msg in st.session_state.messages[selected_agent_name]:
     avatar = "🟢" if msg["role"] == "user" else current_agent["avatar"]
     with st.chat_message(msg["role"], avatar=avatar):
         st.write(msg["content"])
 
+# Processamento da entrada do usuário
 if prompt := st.chat_input("Digite sua mensagem..."):
     st.session_state.messages[selected_agent_name].append({"role": "user", "content": prompt})
     with st.chat_message("user", avatar="🟢"):
         st.write(prompt)
 
     with st.chat_message("assistant", avatar=current_agent["avatar"]):
-        with st.spinner("Pensando na nuvem..."):
+        with st.spinner("Processando..."):
             api_key = st.secrets.get("DEEPSEEK_API_KEY", "")
             if not api_key:
                 response_text = "Erro: Chave DEEPSEEK_API_KEY não configurada nos Secrets do Streamlit."
