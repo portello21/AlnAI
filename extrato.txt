@@ -1,0 +1,6 @@
+DATA,DESCRICAO,VALOR
+2026-08-01,Walmart Hamilton,-145.20
+2026-08-02,Pagamento Mott,+2100.00
+2026-08-03,Crunch Fitness,-15.99
+2026-08-04,Limpeza Fim de Semana,+120.00
+2026-08-05,Posto Shell,-65.00

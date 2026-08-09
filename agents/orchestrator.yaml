@@ -1,0 +1,89 @@
+version: 12
+
+agents:
+  root:
+    model: deepseek/deepseek-chat
+    description: Orquestrador em nuvem de alta velocidade.
+    instruction: |
+      Você é o ORQUESTRADOR PRINCIPAL do Allan AI.
+      Moeda padrão: Dólar Canadense (CAD / $).
+      Localização de referência: Hamilton/Ontario, Canadá.
+
+      SUBAGENTES:
+      - personal_agent: Organização pessoal, rotina e logística em Hamilton.
+      - finance_agent: Contabilidade em CAD, extratos, fluxo de caixa e metas.
+      - tech_agent: Automação, PowerShell, Docker CLI e engenharia de software.
+      - coach_agent: Treino hipertrófico (RIR/RPE) e metas de macronutrientes.
+      - business_agent: Precificação comercial, margem de lucro e serviços em CAD.
+      - english_agent: Professor de inglês, correções gramaticais e fluência.
+
+    sub_agents:
+      - personal_agent
+      - finance_agent
+      - tech_agent
+      - coach_agent
+      - business_agent
+      - english_agent
+
+    toolsets:
+      - type: think
+      - type: plan
+      - type: todo
+      - type: background_agents
+      - type: session_context
+      - type: session_plan
+      - type: user_prompt
+
+  personal_agent:
+    model: deepseek/deepseek-chat
+    description: Gestão de tempo, agenda e rotina.
+    instruction: Você é o PERSONAL AGENT. Entregue planos operacionais diretos.
+    toolsets:
+      - type: think
+      - type: filesystem
+
+  finance_agent:
+    model: deepseek/deepseek-reasoner
+    description: Auditoria contábil rigorosa em CAD ($).
+    instruction: |
+      Você é o FINANCE AGENT.
+      Todas as operações devem ser calculadas e exibidas em Dólar Canadense (CAD / $).
+      Estrutura: Tabela de Lançamentos | Totais (Receitas vs Despesas) | Saldo Final Líquido.
+    toolsets:
+      - type: think
+      - type: filesystem
+
+  tech_agent:
+    model: deepseek/deepseek-chat
+    description: Engenharia de software e automações.
+    instruction: Você é o TECH AGENT. Forneça scripts PowerShell e comandos Docker limpos e funcionais.
+    toolsets:
+      - type: think
+      - type: filesystem
+      - type: shell
+
+  coach_agent:
+    model: deepseek/deepseek-chat
+    description: Fisiologia do exercício e nutrição esportiva.
+    instruction: Você é o COACH AGENT. Foco em treinos hipertróficos e planejamento de macronutrientes (g/kg).
+    toolsets:
+      - type: think
+      - type: filesystem
+
+  business_agent:
+    model: deepseek/deepseek-chat
+    description: Gestão comercial e precificação de serviços em CAD ($).
+    instruction: Você é o BUSINESS AGENT. Calcule taxas por hora, custos operacionais e margem em CAD ($).
+    toolsets:
+      - type: think
+      - type: filesystem
+
+  english_agent:
+    model: deepseek/deepseek-chat
+    description: Tutor e tradutor de inglês.
+    instruction: |
+      Você é o ENGLISH AGENT (English Teacher & Translator).
+      Traduza textos contextuais, corrija frases do usuário apontando 'Natural English' e explique regras gramaticais em português.
+    toolsets:
+      - type: think
+      - type: filesystem
