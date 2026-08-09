@@ -55,20 +55,20 @@ if not st.session_state.authenticated:
     st.stop()
 
 # ============================================================
-# BASE DE DADOS DE LONGO PRAZO PRÉ-CARREGADA
+# BASE DE DADOS MACIÇA DE LONGO PRAZO PRÉ-CARREGADA
 # ============================================================
 
 DEFAULT_PROFILE = [
-    "NOME COMPLETO: Allan Vitor Portello",
-    "IDADE/NASCIMENTO: 26 anos (21 de Abril de 2000)",
-    "LOCALIZAÇÃO: Hamilton, Ontario, Canadá",
-    "ESTREITAMENTO DE IDIOMA: Português (Brasil) e Inglês (Canadá)",
-    "ESTILO DE COMUNICAÇÃO: Estritamente racional, lógico, focado em fatos, sem introduções longas ou clichês corporativos. Sentenças curtas, alta densidade de informação e objetividade.",
-    "MOEDA DE REFERÊNCIA: Dólar Canadense (CAD / $)",
-    "FINANÇAS: Monitoramento estrito de despesas e orçamento em CAD ($) usando tabelas de lançamentos e saldos líquidos.",
-    "FITNESS & DIETA: Musculação focada em hipertrofia (RIR/RPE), metas de alta ingestão de proteína (g/kg), rotinas com ovos, frango e carne magra.",
-    "TECNOLOGIA & INFRAESTRUTURA: Uso de PowerShell, automações de scripts, contêineres Docker, soluções multiagentes, hardware e periféricos de alta performance.",
-    "INGLÊS: Ajuste de vocabulário e expressões naturais do Canadá com correções objetivas."
+    "IDENTIDADE: Allan Vitor Portello, 26 anos (Nascido em 21/04/2000). Altura: 1.90m, Peso: ~118.9kg.",
+    "FAMÍLIA: Casado com Beatriz. Ela é formada em agronomia, cursa gestão de negócios e trabalha na A&W.",
+    "LOCALIZAÇÃO E MORADIA: Atualmente em Hamilton, Ontario, porém concluindo o contrato de aluguel atual (setembro/2026) e em processo de mudança para Brantford.",
+    "TRABALHO: Atua no setor de limpeza no Canadá e trabalha com o colega Serdar. O Allan não possui diploma universitário.",
+    "METAS FINANCEIRAS E ESTUDOS: Planejando a estruturação de um plano de pagamento para a parcela de CAD .000 da universidade da Beatriz com vencimento para setembro/2026.",
+    "VEÍCULO: Proprietário de um Mazda 3 (ano 2012). Objetivo de curto prazo: comprar um carro mais novo utilizando o Mazda 3 como entrada na negociação. Mantém o carro de forma rigorosa com polimentos e cuidados.",
+    "GAMING & TECH: Joga FPS competitivo (Counter-Strike 2, Warzone) e tem profundo interesse na economia e valores do mercado de skins do CS2. Adora projetar, montar e otimizar computadores de alta performance e ajustar periféricos.",
+    "FITNESS & DIETA: Pratica musculação focada em hipertrofia na Crunch Fitness. Mantém uma dieta pragmática hiperproteica baseada em peito de frango, carne moída magra e ovos.",
+    "ESTILO DE COMUNICAÇÃO: Responda de forma extremamente lógica, racional e com foco em dados. Elimine clichês corporativos, introduções vazias e conclusões óbvias. Maximize a densidade da informação.",
+    "MOEDA E REFERÊNCIA: Todas as análises financeiras e precificações devem ser em Dólar Canadense (CAD / $)."
 ]
 
 def load_long_term_memory() -> dict:
@@ -77,7 +77,6 @@ def load_long_term_memory() -> dict:
         try:
             with open(MEMORY_FILE, "r", encoding="utf-8") as f:
                 saved = json.load(f)
-                # Garante que os fatos padrão sempre existam combinados com os aprendidos
                 facts = list(set(DEFAULT_PROFILE + saved.get("user_facts", [])))
                 return {"user_facts": facts, "history": saved.get("history", {})}
         except Exception:
@@ -104,49 +103,49 @@ AGENTS = {
         "icon": "🤖",
         "description": "Assistente central. Inteligência e triagem automatizada.",
         "language": "pt-BR",
-        "system_prompt": "Você é o Allan AI Core. Responda de forma direta, clara, densa e extremamente objetiva. Padrão: CAD ($), Hamilton/Ontario."
+        "system_prompt": "Você é o Allan AI Core. Acesso completo ao perfil do Allan. Responda com objetividade máxima e precisão técnica. Encaminhe demandas específicas."
     },
     "personal": {
         "name": "Personal Agent",
         "icon": "👤",
         "description": "Gestão de tempo, rotina diária e organização pessoal.",
         "language": "pt-BR",
-        "system_prompt": "Você é o Personal Agent do Allan AI. Foco em gestão de tempo e produtividade operacional em Hamilton, Ontario."
+        "system_prompt": "Você é o Personal Agent do Allan AI. Auxilie na mudança para Brantford, escalas de trabalho com Serdar e organização geral."
     },
     "finance": {
         "name": "Finance Agent",
         "icon": "💰",
         "description": "Análise financeira, orçamento e extratos em CAD ($).",
         "language": "pt-BR",
-        "system_prompt": "Você é o Finance Agent do Allan AI. Manter cálculos estritamente em Dólar Canadense (CAD / $). Use tabelas Markdown."
+        "system_prompt": "Você é o Finance Agent do Allan AI. Foco no plano de CAD  da universidade da Beatriz e projeções para o trade-in do Mazda 3 2012."
     },
     "tech": {
         "name": "Tech Agent",
         "icon": "💻",
-        "description": "Engenharia de software, PowerShell e Docker.",
+        "description": "Engenharia de software, PowerShell, Docker e Hardware.",
         "language": "pt-BR",
-        "system_prompt": "Você é o Tech Agent do Allan AI. Forneça scripts limpos em PowerShell, comandos Docker e arquitetura robusta."
+        "system_prompt": "Você é o Tech Agent do Allan AI. Entregue soluções exatas para programação, montagem de PCs, otimização de hardware e setups para CS2."
     },
     "coach": {
         "name": "Coach Agent",
         "icon": "🏋️",
         "description": "Treinos para hipertrofia e acompanhamento nutricional.",
         "language": "pt-BR",
-        "system_prompt": "Você é o Coach Agent do Allan AI. Planejamento de hipertrofia (RIR/RPE) e metas proteicas em g/kg."
+        "system_prompt": "Você é o Coach Agent do Allan AI. Prescreva planos de treino hipertróficos (Crunch Fitness) e controle a dieta proteica baseada em carne moída, frango e ovos."
     },
     "business": {
         "name": "Business Agent",
         "icon": "💼",
-        "description": "Estratégia comercial, precificação e orçamentos em CAD ($).",
+        "description": "Estratégia comercial, precificação e mercado.",
         "language": "pt-BR",
-        "system_prompt": "Você é o Business Agent do Allan AI. Calcule custos operacionais, margem de lucro e precificação em CAD ($)."
+        "system_prompt": "Você é o Business Agent do Allan AI. Analise a economia de itens de jogos (Skins CS2) e projetos de negócios em CAD ($)."
     },
     "english": {
         "name": "English Teacher",
         "icon": "🇺🇸",
         "description": "Professor de inglês: tradução, correções e pronúncia.",
         "language": "en-US",
-        "system_prompt": "You are the English Teacher agent of Allan AI. Help improve English using natural Canadian expressions and clear corrections."
+        "system_prompt": "You are the English Teacher agent of Allan AI. Help Allan improve English using natural Canadian context (Ontario)."
     },
 }
 
@@ -235,9 +234,8 @@ def ask_deepseek(agent_id: str, history: list[dict[str, Any]]) -> str:
     api_key = st.secrets["DEEPSEEK_API_KEY"]
     agent = AGENTS[agent_id]
 
-    # Injeção Automática de Memória de Longo Prazo
-    memory_facts = "\n".join(st.session_state.long_memory.get("user_facts", []))
-    system_content = f"{agent['system_prompt'].strip()}\n\n[MEMÓRIA DE LONGO PRAZO DO USUÁRIO]:\n{memory_facts}"
+    memory_facts = "\n- ".join(st.session_state.long_memory.get("user_facts", []))
+    system_content = f"{agent['system_prompt'].strip()}\n\n[MEMÓRIA DE LONGO PRAZO DO USUÁRIO]:\n- {memory_facts}"
 
     messages = [{"role": "system", "content": system_content}]
     for item in history[-30:]:
@@ -348,7 +346,6 @@ export default function(component) {
 
 composer_component = components.component(name="allan_ai_composer", html=COMPOSER_HTML, css=COMPOSER_CSS, js=COMPOSER_JS)
 
-# BARRA LATERAL
 with st.sidebar:
     st.markdown('<div style="font-size:20px; font-weight:bold; color:#e9edef; padding:8px 0;">Allan AI</div><div style="font-size:11px; color:#8696a0; margin-bottom:12px;">Conversas ativas</div>', unsafe_allow_html=True)
     for a_id, a_data in AGENTS.items():
