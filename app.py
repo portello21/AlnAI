@@ -4,12 +4,14 @@ import os
 import re
 import time
 import hashlib
+import datetime
 from typing import Any
 import base64
 
 import requests
 import streamlit as st
 import streamlit.components.v2 as components
+import extra_streamlit_components as stx
 from duckduckgo_search import DDGS
 from supabase import create_client, Client
 
@@ -36,8 +38,21 @@ def init_supabase() -> Client | None:
 
 supabase = init_supabase()
 
+@st.cache_resource
+def get_cookie_manager():
+    return stx.CookieManager()
+
+cookie_manager = get_cookie_manager()
+
 if "authenticated" not in st.session_state: st.session_state.authenticated = False
 if "current_profile" not in st.session_state: st.session_state.current_profile = None
+
+# Verificação de Token de Acesso (Cookie)
+cookie_profile = cookie_manager.get(cookie="rog_ai_profile")
+if cookie_profile in PASSWORDS and not st.session_state.authenticated:
+    st.session_state.authenticated = True
+    st.session_state.current_profile = cookie_profile
+    st.rerun()
 
 if not st.session_state.authenticated:
     st.markdown("<style>.stApp { background-color: #0b141a !important; color: #e9edef !important; } .login-box { max-width: 400px; margin: 100px auto; padding: 30px; background: #202c33; border-radius: 12px; border: 1px solid #2a3942; text-align: center; }</style>", unsafe_allow_html=True)
@@ -45,11 +60,14 @@ if not st.session_state.authenticated:
     st.title("🔒 ROG AI")
     profile_choice = st.selectbox("Perfil", ["Allan", "Beatriz", "Irmao_1", "Irmao_2"])
     input_pass = st.text_input("Senha", type="password")
+    lembrar_me = st.checkbox("Lembrar de mim (30 dias)")
     
     if st.button("Entrar", use_container_width=True, type="primary"):
         if input_pass == PASSWORDS[profile_choice]:
             st.session_state.authenticated = True
             st.session_state.current_profile = profile_choice
+            if lembrar_me:
+                cookie_manager.set("rog_ai_profile", profile_choice, expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
             st.rerun()
         else:
             st.error("Falha de autenticação.")
@@ -268,7 +286,11 @@ with st.sidebar:
         if st.button(f"{a_data['icon']} {a_data['name']}", key=f"agent_{a_id}", use_container_width=True, type="primary" if sel else "secondary"):
             if not sel: st.session_state.current_agent = a_id; st.rerun()
     st.markdown("---")
-    if st.button("🔒 Sair", use_container_width=True): st.session_state.authenticated = False; st.session_state.current_profile = None; st.rerun()
+    if st.button("🔒 Sair", use_container_width=True): 
+        cookie_manager.delete("rog_ai_profile")
+        st.session_state.authenticated = False
+        st.session_state.current_profile = None
+        st.rerun()
 
 agent_id = st.session_state.current_agent
 agent = AGENTS[agent_id]

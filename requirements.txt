@@ -2,3 +2,4 @@
 requests>=2.31.0
 duckduckgo-search>=6.2.1
 supabase>=2.3.0
+extra-streamlit-components>=0.1.71
