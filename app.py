@@ -11,14 +11,16 @@ import streamlit as st
 import streamlit.components.v2 as components
 from duckduckgo_search import DDGS
 
-st.set_page_config(page_title="Allan AI - Multi-Profile", page_icon="🔒", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Allan AI - Multi-Tenant", page_icon="🔒", layout="wide", initial_sidebar_state="expanded")
 
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 MEMORY_FILE = "long_term_memory.json"
 
 PASSWORDS = {
     "Allan": st.secrets.get("ALLAN_PASSWORD", "Allan2026@Pass"),
-    "Beatriz": st.secrets.get("BEATRIZ_PASSWORD", "Beatriz2026@Pass")
+    "Beatriz": st.secrets.get("BEATRIZ_PASSWORD", "Beatriz2026@Pass"),
+    "Irmao_1": st.secrets.get("IRMAO1_PASSWORD", "Irmao1@Pass"),
+    "Irmao_2": st.secrets.get("IRMAO2_PASSWORD", "Irmao2@Pass")
 }
 
 if "authenticated" not in st.session_state: st.session_state.authenticated = False
@@ -28,7 +30,7 @@ if not st.session_state.authenticated:
     st.markdown("<style>.stApp { background-color: #0b141a !important; color: #e9edef !important; } .login-box { max-width: 400px; margin: 100px auto; padding: 30px; background: #202c33; border-radius: 12px; border: 1px solid #2a3942; text-align: center; }</style>", unsafe_allow_html=True)
     st.markdown("<div class='login-box'>", unsafe_allow_html=True)
     st.title("🔒 Allan AI")
-    profile_choice = st.selectbox("Perfil", ["Allan", "Beatriz"])
+    profile_choice = st.selectbox("Perfil", ["Allan", "Beatriz", "Irmao_1", "Irmao_2"])
     input_pass = st.text_input("Senha", type="password")
     
     if st.button("Entrar", use_container_width=True, type="primary"):
@@ -46,31 +48,40 @@ PROFILES = {
         "IDENTIDADE: Allan Vitor Portello, 26 anos (21/04/2000). Altura: 1.90m, Peso: ~118.9kg.",
         "FAMÍLIA: Casado com Beatriz (agronomia/A&W).",
         "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026).",
-        "TRABALHO: Setor de limpeza no Canadá com colega Serdar. Sem diploma universitário.",
-        "METAS: Plano de CAD .000 (faculdade da Beatriz) para set/2026. Troca do Mazda 3 (2012) por carro novo.",
-        "TECH & GAMES: Joga CS2 competitivo. Otimiza/monta PCs de alta performance.",
-        "FITNESS: Musculação na Crunch Fitness. Dieta hiperproteica (ovos, frango, carne moída).",
+        "TRABALHO: Setor de limpeza no Canadá com colega Serdar. Sem diploma.",
+        "METAS: Plano de CAD .000 (faculdade Beatriz) para set/2026. Troca do Mazda 3 (2012).",
+        "TECH & GAMES: Joga CS2 competitivo. Monta PCs de alta performance.",
+        "FITNESS: Musculação na Crunch Fitness. Dieta hiperproteica.",
         "ESTILO: Racional, lógico, sem clichês. Respostas densas e objetivas.",
         "MOEDA: Dólar Canadense (CAD / $)."
     ],
     "Beatriz": [
         "IDENTIDADE: Beatriz. Casada com Allan Vitor Portello.",
-        "ESTUDOS E TRABALHO: Formada em agronomia, estudante de gestão de negócios. Trabalha na A&W.",
+        "ESTUDOS E TRABALHO: Formada em agronomia, gestão de negócios. Trabalha na A&W.",
         "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026).",
-        "METAS FINANCEIRAS: Organizar parcelamento universitário de CAD .000 para setembro/2026.",
-        "FITNESS & DIETA: Busca suporte de treino e dieta alinhados à rotina.",
-        "ESTILO: Respostas práticas, encorajadoras e focadas em organização.",
+        "METAS FINANCEIRAS: Parcelamento universitário de CAD .000 para set/2026.",
+        "FITNESS: Treino e dieta alinhados à rotina.",
         "MOEDA: Dólar Canadense (CAD / $)."
+    ],
+    "Irmao_1": [
+        "IDENTIDADE: Usuário Irmão 1.",
+        "DIRETRIZES: Acesso total às engines de otimização técnica, financeira e linguística do Allan AI.",
+        "RELAÇÃO: Membro da família autorizado. Isolar dados dos perfis Allan e Beatriz."
+    ],
+    "Irmao_2": [
+        "IDENTIDADE: Usuário Irmão 2.",
+        "DIRETRIZES: Acesso total às engines de otimização técnica, financeira e linguística do Allan AI.",
+        "RELAÇÃO: Membro da família autorizado. Isolar dados dos perfis Allan e Beatriz."
     ]
 }
 
 def load_long_term_memory() -> dict:
-    base = {"Allan": {"user_facts": PROFILES["Allan"].copy(), "history": {}}, "Beatriz": {"user_facts": PROFILES["Beatriz"].copy(), "history": {}}}
+    base = {p: {"user_facts": PROFILES[p].copy(), "history": {}} for p in PROFILES}
     if os.path.exists(MEMORY_FILE):
         try:
             with open(MEMORY_FILE, "r", encoding="utf-8") as f:
                 saved = json.load(f)
-            for p in ["Allan", "Beatriz"]:
+            for p in PROFILES:
                 if p in saved:
                     base[p]["history"] = saved[p].get("history", {})
                     base[p]["user_facts"] = list(set(PROFILES[p] + saved[p].get("user_facts", [])))
@@ -85,13 +96,13 @@ def save_long_term_memory(memory_data: dict) -> None:
 if "long_memory" not in st.session_state: st.session_state.long_memory = load_long_term_memory()
 
 AGENTS = {
-    "orchestrator": {"name": "Allan AI Core", "icon": "🤖", "description": "Inteligência central e triagem.", "language": "pt-BR", "system_prompt": "Você é o Allan AI Core. Diretrizes estritas: 1. Objetividade máxima. 2. URLs e Links: Forneça links diretos e verificáveis. 3. Arquivos: Estruture saídas em Markdown. Moeda: CAD ($)."},
-    "personal": {"name": "Personal Agent", "icon": "👤", "description": "Logística, leitura de documentos e organização.", "language": "pt-BR", "system_prompt": "Você é o Personal Agent. Assistente versátil especializado em decodificar informações, leitura e interpretação de documentos complexos e gestão de rotina (escalas de trabalho, mudança de residência). Simplifique, traduza e organize de forma clara tudo o que for confuso ou burocrático para o usuário."},
-    "finance": {"name": "Finance Agent", "icon": "💰", "description": "Planejamento futuro e rotas de saída de dívidas.", "language": "pt-BR", "system_prompt": "Você é o Finance Agent. Especialista em planejamento de futuro, gestão de orçamentos e construção de rotas estratégicas matemáticas para saída de dívidas. Crie planos de ação passo a passo, cronogramas de amortização e estratégias de recuperação financeira. Todas as projeções e cálculos devem ser estruturados em tabelas utilizando Dólar Canadense (CAD / $)."},
-    "tech": {"name": "Tech Agent", "icon": "💻", "description": "Otimização extrema, CS2 e hardware.", "language": "pt-BR", "system_prompt": "Você é o Tech Agent. Engenheiro de hardware e software focado em otimização extrema de desempenho, com especialização no jogo CS2. Domina técnicas avançadas como overclock, undervolt, ajustes finos de BIOS, latência de sistema e otimização profunda do Windows. Entregue guias exatos, comandos estruturados e scripts operacionais (PowerShell)."},
-    "coach": {"name": "Coach Agent", "icon": "🏋️", "description": "Endocrinologia esportiva e biomecânica.", "language": "pt-BR", "system_prompt": "Você é um Coach de Elite e Especialista em Endocrinologia Esportiva. Prescreva periodizações avançadas (mesociclos, deloads). Analise a via metabólica mTOR, sinalização anabólica e controle de cortisol. Calcule o timing de nutrientes (ovos, frango, carne) para otimizar picos de insulina pós-treino. Diferencie falha mecânica de falha metabólica."},
-    "business": {"name": "Business Agent", "icon": "💼", "description": "Geração de renda e marcas faceless.", "language": "pt-BR", "system_prompt": "Você é o Business Agent. Especialista em marketing digital e geração de renda online estruturada através de marcas e canais 'faceless' (sem mostrar o rosto). Desenhe modelos de negócio, roteiros, estratégias de tráfego, automação comercial e monetização utilizando o YouTube e outras plataformas. Calcule projeções em CAD ($)."},
-    "english": {"name": "English Teacher", "icon": "🇺🇸", "description": "Transição de idioma e expressões canadenses.", "language": "en-US", "system_prompt": "You are the English Teacher agent. Especialista na transição linguística do Português para o Inglês. Você entende profundamente as dificuldades, os vícios de linguagem e as armadilhas da tradução literal que falantes de português enfrentam. Ofereça suporte total e paciente, explique a lógica por trás da gramática e foque no uso natural do inglês no contexto do Canadá (Ontario)."},
+    "orchestrator": {"name": "Allan AI Core", "icon": "🤖", "description": "Inteligência central e triagem.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Allan AI Core. Diretrizes estritas: 1. Objetividade máxima. 2. Links diretos. 3. Formatação Markdown."},
+    "personal": {"name": "Personal Agent", "icon": "👤", "description": "Logística, leitura de documentos.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Personal Agent. Especialista em decodificar informações, leitura de documentos e gestão de rotina. Simplifique e traduza dados burocráticos."},
+    "finance": {"name": "Finance Agent", "icon": "💰", "description": "Planejamento futuro e rotas.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Finance Agent. Especialista em planejamento de futuro e rotas matemáticas para saída de dívidas. Crie planos de ação e cronogramas de amortização estruturados em tabelas."},
+    "tech": {"name": "Tech Agent", "icon": "💻", "description": "Otimização extrema, CS2 e hardware.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Tech Agent. Engenheiro focado em otimização de desempenho, CS2, overclock, undervolt, BIOS e latência. Entregue scripts operacionais e comandos exatos."},
+    "coach": {"name": "Coach Agent", "icon": "🏋️", "description": "Endocrinologia esportiva e biomecânica.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é um Coach de Elite e Especialista em Endocrinologia Esportiva. Prescreva periodizações (mesociclos). Analise sinalização anabólica e timing de nutrientes. Diferencie falha mecânica de metabólica."},
+    "business": {"name": "Business Agent", "icon": "💼", "description": "Geração de renda e marcas faceless.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Business Agent. Estrategista de modelos de negócio 'faceless'. Desenhe roteiros, tráfego e monetização em plataformas digitais."},
+    "english": {"name": "English Teacher", "icon": "🇺🇸", "description": "Transição linguística.", "language": "en-US", "api_model": "deepseek-chat", "system_prompt": "You are the English Teacher. Especialista em transição do Português para o Inglês. Corrija vícios de tradução literal. Foque no uso natural do inglês Canadense."},
 }
 
 current_profile = st.session_state.current_profile
@@ -115,8 +126,10 @@ def auto_web_search(query: str) -> str:
 def ask_deepseek(agent_id: str, history: list[dict[str, Any]], user_query: str, image_base64: str = None) -> str:
     api_key = st.secrets["DEEPSEEK_API_KEY"]
     agent = AGENTS[agent_id]
+    target_model = agent.get("api_model", "deepseek-chat")
+    
     memory_facts = "\n- ".join(st.session_state.long_memory[current_profile].get("user_facts", []))
-    system_content = f"{agent['system_prompt'].strip()}\n\n[MEMÓRIA DE LONGO PRAZO - PERFIL: {current_profile.upper()}]:\n- {memory_facts}"
+    system_content = f"{agent['system_prompt'].strip()}\n\n[MEMÓRIA - PERFIL: {current_profile.upper()}]:\n- {memory_facts}"
     
     web_context = auto_web_search(user_query)
     if web_context: system_content += web_context
@@ -128,15 +141,16 @@ def ask_deepseek(agent_id: str, history: list[dict[str, Any]], user_query: str, 
     
     if image_base64:
         user_msg = messages[-1]
-        user_msg["content"] = [
-            {"type": "text", "text": user_msg["content"]},
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}
-        ]
+        user_msg["content"] = [{"type": "text", "text": user_msg["content"]}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}}]
     
-    response = requests.post(DEEPSEEK_URL, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": "deepseek-chat", "messages": messages, "temperature": 0.3}, timeout=60)
+    response = requests.post(DEEPSEEK_URL, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": target_model, "messages": messages, "temperature": 0.3}, timeout=90)
     data = response.json()
     if not response.ok: raise RuntimeError(f"DeepSeek: {data.get('error', {}).get('message', 'Erro API')}")
-    return data["choices"][0]["message"]["content"].strip()
+    
+    # Extração de cadeia de pensamento (Reasoner) combinada ao conteúdo
+    reasoning = data["choices"][0]["message"].get("reasoning_content", "")
+    content = data["choices"][0]["message"].get("content", "")
+    return f"> *Raciocínio lógico executado pelo motor DeepSeek-R1.*\n\n{content}" if reasoning and target_model == "deepseek-reasoner" else content.strip()
 
 st.markdown("""<style>
 :root { --amoled: #0b141a; --sidebar: #111b21; --bubble-ai: #202c33; --bubble-user: #005c4b; --border: #2a3942; --green: #00a884; --text: #e9edef; --muted: #8696a0; }
@@ -235,7 +249,8 @@ def process_msg(text: str):
     except: pass
     
     try:
-        with st.spinner("Analisando..."): ans = ask_deepseek(agent_id, st.session_state.conversations[agent_id], text, img_b64)
+        with st.spinner("Processamento DeepSeek R1 em andamento..." if agent.get("api_model") == "deepseek-reasoner" else "Analisando..."): 
+            ans = ask_deepseek(agent_id, st.session_state.conversations[agent_id], text, img_b64)
         st.session_state.conversations[agent_id].append({"role": "assistant", "content": ans, "time": time.strftime("%H:%M"), "agent": agent})
         st.session_state.speech_text = re.sub(r"`.*?`|[*_#>|]", " ", ans, flags=re.S).strip()
         st.session_state.speech_id += 1
