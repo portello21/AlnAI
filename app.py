@@ -4,7 +4,9 @@ import os
 import re
 import time
 import hashlib
+import datetime
 from typing import Any
+import base64
 
 import requests
 import streamlit as st
@@ -34,23 +36,17 @@ def init_supabase() -> Client | None:
 
 supabase = init_supabase()
 
-# ================= ENGENHARIA DE SESSÃO NATIVA (TOKENS DE URL) =================
-
 if "authenticated" not in st.session_state: st.session_state.authenticated = False
 if "current_profile" not in st.session_state: st.session_state.current_profile = None
 
-# Verificação Instantânea via URL (Sem delays de Cookie)
 if not st.session_state.authenticated:
     url_token = st.query_params.get("auth")
     if url_token:
         for profile_name, password in PASSWORDS.items():
-            # Compara o token da URL com o Hash MD5 da senha real
             if url_token == hashlib.md5(password.encode()).hexdigest():
                 st.session_state.authenticated = True
                 st.session_state.current_profile = profile_name
                 break
-
-# ================= DADOS E MEMÓRIA =================
 
 PROFILES = {
     "Allan": ["IDENTIDADE: Allan Vitor Portello, 26 anos (21/04/2000). Altura: 1.90m, Peso: ~118.9kg.", "FAMÍLIA: Casado com Beatriz (agronomia/A&W).", "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026).", "TRABALHO: Setor de limpeza no Canadá com colega Serdar. Sem diploma.", "METAS: Plano de CAD 5.000 (faculdade Beatriz) para set/2026. Troca do Mazda 3 (2012).", "TECH & GAMES: Joga CS2 competitivo. Monta PCs de alta performance.", "FITNESS: Musculação na Crunch Fitness. Dieta hiperproteica.", "ESTILO: Racional, lógico, sem clichês. Respostas densas e objetivas.", "MOEDA: Dólar Canadense (CAD)."],
@@ -98,14 +94,14 @@ AGENTS = {
     "orchestrator": {
         "name": "ROG AI Core", 
         "icon": "🧠", 
-        "description": "Inteligência primária. Respostas rápidas.", 
+        "description": "Inteligência primária com visão OCR.", 
         "language": "pt-BR", 
         "api_model": "deepseek-chat", 
-        "system_prompt": "Você é a ROG AI, a inteligência artificial primária de elite do usuário atual, operando com velocidade e precisão absurdas. Suas responsabilidades vitais: 1. Entregar respostas pragmáticas e conclusivas, gerando arquivos, códigos e lógicas quando solicitado. 2. Atuar como analista crítico para problemas financeiros e de rotina no Canadá. 3. Dar opiniões sem filtros corporativos genéricos; seja afiado, racional e direto ao ponto. Estruture toda saída em Markdown impecável."
+        "system_prompt": "Você é a ROG AI, a inteligência artificial primária de elite do usuário atual, equipada com capacidade de análise visual e OCR. Extraia dados de imagens anexadas, analise recibos, faturas e documentos, respondendo com precisão analítica e sem filtros corporativos."
     },
-    "personal": {"name": "Personal Agent", "icon": "👤", "description": "Logística e leitura de documentos.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Personal Agent. Leia documentos burocráticos, traduza burocracias e otimize a rotina logística (ex: cronogramas de mudança)."},
+    "personal": {"name": "Personal Agent", "icon": "👤", "description": "Logística e leitura de documentos.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Personal Agent. Leia documentos burocráticos, traduza burocracias e otimize a rotina logística."},
     "finance": {"name": "Finance Agent", "icon": "💰", "description": "Planejamento e rotas matemáticas.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Finance Agent. Estruture saídas de dívidas e planilhas de longo prazo matemáticas em CAD."},
-    "tech": {"name": "Tech Agent", "icon": "💻", "description": "Otimização Windows, Hardware e CS2.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Tech Agent. Especialista em latência, undervolt, otimização do Windows e engenharia para ganho de FPS no CS2. Forneça scripts literais e guias absolutos."},
+    "tech": {"name": "Tech Agent", "icon": "💻", "description": "Otimização Windows, Hardware e CS2.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Tech Agent. Especialista em latência, undervolt, otimização do Windows e engenharia para ganho de FPS no CS2."},
     "coach": {"name": "Coach Agent", "icon": "🏋️", "description": "Endocrinologia e biomecânica.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Coach Agent. Foque na via metabólica mTOR, anabolismo, timing de nutrientes e periodizações intensas."},
     "business": {"name": "Business Agent", "icon": "💼", "description": "Geração de renda digital.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Business Agent. Desenhe negócios online 'faceless', tráfego e monetização passo a passo."},
     "english": {"name": "English Teacher", "icon": "🇺🇸", "description": "Fluência extrema e gramática.", "language": "en-US", "api_model": "deepseek-chat", "system_prompt": "Você é o English Teacher. Destrua os vícios de tradução do português. Foque na fluência real do Canadá."},
@@ -124,7 +120,7 @@ def auto_web_search(query: str) -> str:
         return context
     except Exception as e: return f"\\n[ERRO BUSCA WEB: {str(e)}]"
 
-def ask_deepseek(agent_id: str, history: list, user_query: str) -> str:
+def ask_deepseek(agent_id: str, history: list, user_query: str, image_b64: str = None) -> str:
     api_key = st.secrets["DEEPSEEK_API_KEY"]
     agent = AGENTS[agent_id]
     target_model = agent.get("api_model", "deepseek-chat")
@@ -139,6 +135,15 @@ def ask_deepseek(agent_id: str, history: list, user_query: str) -> str:
     for item in history[-30:]:
         if item.get("role") in {"user", "assistant"} and item.get("content"): 
             messages.append({"role": item["role"], "content": item["content"]})
+            
+    if image_b64 and messages:
+        # Insere a imagem estruturada no formato compatível de visão
+        last_msg = messages[-1]
+        if isinstance(last_msg["content"], str):
+            last_msg["content"] = [
+                {"type": "text", "text": last_msg["content"]},
+                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}}
+            ]
     
     try:
         response = requests.post(DEEPSEEK_URL, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": target_model, "messages": messages, "temperature": 0.3}, timeout=120)
@@ -170,18 +175,13 @@ st.markdown('''
 .bubble-user { max-width:80%; background:linear-gradient(145deg,#075e54,#075449); border:1px solid #0a806f; border-radius:14px 4px 14px 14px; padding:12px 16px; font-size:16px; line-height: 1.5; box-shadow:0 2px 7px rgba(0,0,0,.18); }
 .bubble-ai { max-width:84%; background:linear-gradient(145deg,#172229,#152027); border:1px solid var(--border); border-radius:4px 14px 14px 14px; padding:12px 18px; font-size:16px; line-height: 1.6; box-shadow:0 2px 7px rgba(0,0,0,.18); }
 .bubble-ai p, .bubble-user p, .bubble-ai li { font-size: 16px !important; }
-.bubble-ai h1, .bubble-ai h2, .bubble-ai h3 { margin-top: 14px; margin-bottom: 10px; }
 .message-time { color:rgba(233,237,239,.48); font-size:10px; text-align:right; margin-top:6px; }
-[data-testid="stChatInput"] { background:transparent !important; border:0 !important; }
-[data-testid="stChatInput"] textarea { background:#111c22 !important; color:#e9edef !important; border:1px solid var(--border) !important; border-radius: 14px !important; font-size: 16px !important; }
-[data-testid="stChatInput"] textarea:focus { border-color:var(--green) !important; box-shadow:0 0 0 1px var(--green) !important; }
 [data-testid="stSidebar"] button { border-radius:10px !important; border:1px solid transparent !important; background:transparent !important; color:var(--text) !important; text-align:left !important; padding:8px 12px !important; transition:0.2s; }
 [data-testid="stSidebar"] button:hover { background:#17232a !important; border-color:var(--border) !important; }
 [data-testid="stSidebar"] button[kind="primary"] { background:rgba(0,168,132,.12) !important; border-left:3px solid var(--green) !important; }
 </style>
 ''', unsafe_allow_html=True)
 
-# Lógica de Roteamento Isolado
 if not st.session_state.authenticated:
     st.markdown('''
     <div class="login-box">
@@ -198,11 +198,8 @@ if not st.session_state.authenticated:
         if input_pass == PASSWORDS[profile_choice]:
             st.session_state.authenticated = True
             st.session_state.current_profile = profile_choice
-            
             if lembrar_me:
-                # Gera um token seguro e embute na URL do navegador
                 st.query_params["auth"] = hashlib.md5(input_pass.encode()).hexdigest()
-            
             st.rerun()
         else:
             st.error("Senha incorreta.")
@@ -229,7 +226,7 @@ else:
                 
         st.markdown('<hr style="border-color:#263840; margin:15px 0;">', unsafe_allow_html=True)
         if st.button("↪ Encerrar Sessão", use_container_width=True):
-            st.query_params.clear() # Limpa a URL instantaneamente
+            st.query_params.clear()
             st.session_state.authenticated = False
             st.session_state.current_profile = None
             st.rerun()
@@ -249,20 +246,30 @@ else:
         if msg["role"] == "user":
             st.markdown(f'<div class="message-user"><div class="bubble-user">{html.escape(msg["content"])}<div class="message-time">{msg.get("time", "")}</div></div></div>', unsafe_allow_html=True)
         else:
-            content_html = msg["content"].replace("\\n", "<br>")
-            lbl = msg.get("agent", {}).get("name", "ROG AI")
-            st.markdown(f'<div class="message-ai"><div class="bubble-ai"><div style="color:#00a884; font-size:11px; font-weight:bold; margin-bottom:6px;">{msg.get("agent", {}).get("icon", "🤖")} {lbl}</div>{msg["content"]}<div class="message-time">{msg.get("time", "")}</div></div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="message-ai"><div class="bubble-ai"><div style="color:#00a884; font-size:11px; font-weight:bold; margin-bottom:6px;">{msg.get("agent", {}).get("icon", "🤖")} {msg.get("agent", {}).get("name", "ROG AI")}</div>{msg["content"]}<div class="message-time">{msg.get("time", "")}</div></div></div>', unsafe_allow_html=True)
 
+    # Painel de Anexo de Imagem (OCR Real) integrando com o Chat Nativo
+    uploaded_image = st.file_uploader("📎 Anexar imagem para leitura óptica (OCR)", type=["png", "jpg", "jpeg"])
     user_input = st.chat_input(f"Mensagem para {agent['name']}...")
-    if user_input:
-        st.session_state.conversations[agent_id].append({"role": "user", "content": user_input, "time": time.strftime("%H:%M"), "agent": agent})
+
+    if user_input or uploaded_image:
+        img_b64 = None
+        display_text = user_input if user_input else "Analise esta imagem."
+        
+        if uploaded_image:
+            bytes_data = uploaded_image.getvalue()
+            img_b64 = base64.b64encode(bytes_data).decode('utf-8')
+            display_text = f"[Imagem Anexada] {display_text}"
+
+        st.session_state.conversations[agent_id].append({"role": "user", "content": display_text, "time": time.strftime("%H:%M"), "agent": agent, "img": img_b64})
         st.session_state.long_memory[current_profile]["history"] = st.session_state.conversations
         save_long_term_memory(st.session_state.long_memory)
         st.rerun()
 
     if len(history) > 0 and history[-1]["role"] == "user":
-        with st.spinner(f"Aguarde, {agent['name']} está processando..."):
-            ans = ask_deepseek(agent_id, history, history[-1]["content"])
+        last_msg = history[-1]
+        with st.spinner(f"Aguarde, {agent['name']} está processando a solicitação e imagem..."):
+            ans = ask_deepseek(agent_id, history[:-1], last_msg["content"], last_msg.get("img"))
             st.session_state.conversations[agent_id].append({"role": "assistant", "content": ans, "time": time.strftime("%H:%M"), "agent": agent})
             st.session_state.long_memory[current_profile]["history"] = st.session_state.conversations
             save_long_term_memory(st.session_state.long_memory)
