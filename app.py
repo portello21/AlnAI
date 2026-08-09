@@ -49,7 +49,7 @@ if cookie_profile in PASSWORDS and not st.session_state.authenticated:
     st.rerun()
 
 if not st.session_state.authenticated:
-    st.markdown("""
+    st.markdown('''
     <style>
     .stApp { background: radial-gradient(circle at 50% 10%, rgba(0,168,132,.10), transparent 30%), linear-gradient(180deg,#070b0e,#0b141a) !important; color:#e9edef !important; }
     [data-testid="stHeader"] { background:transparent !important; }
@@ -71,7 +71,7 @@ if not st.session_state.authenticated:
         <div class="rog-login-subtitle">Inteligência multiagente · memória privada · acesso seguro</div>
         <div class="rog-login-divider"></div>
     </div>
-    """, unsafe_allow_html=True)
+    ''', unsafe_allow_html=True)
     profile_choice = st.selectbox("Perfil", ["Allan", "Beatriz", "Natan", "Tainan"])
     input_pass = st.text_input("Senha", type="password")
     lembrar_me = st.checkbox("Lembrar de mim (30 dias)")
@@ -184,7 +184,7 @@ def ask_deepseek(agent_id: str, history: list[dict[str, Any]], user_query: str, 
     content = data["choices"][0]["message"].get("content", "")
     return f"> *Raciocínio lógico executado pelo motor DeepSeek-R1.*\n\n{content}" if reasoning and target_model == "deepseek-reasoner" else content.strip()
 
-st.markdown("""
+st.markdown('''
 <style>
 :root { --amoled:#080d10; --sidebar:#0e171c; --sidebar-2:#111c22; --bubble-ai:#172229; --bubble-user:#075e54; --border:#263840; --border-soft:rgba(134,150,160,.14); --green:#00a884; --text:#e9edef; --muted:#8696a0; }
 .stApp { background:radial-gradient(circle at 75% -10%,rgba(0,168,132,.055),transparent 30%),linear-gradient(180deg,#080d10 0%,#0b141a 100%) !important; color:var(--text) !important; }
@@ -230,7 +230,7 @@ st.markdown("""
 [data-testid="stDownloadButton"] button:hover { border-color:#00a884 !important; color:#e9edef !important; }
 @media (max-width:900px) { .main .block-container { padding:8px 8px 95px; } .chat-history { padding-left:1%; padding-right:1%; } .bubble-user { max-width:90%; } .bubble-ai { max-width:94%; } .chat-header::after { display:none; } }
 </style>
-""", unsafe_allow_html=True)
+''', unsafe_allow_html=True)
 
 COMPOSER_HTML = """
 <div class="composer-root">
@@ -372,7 +372,7 @@ for msg in history:
             st.download_button(label="📥 Baixar Tabela (CSV)", data=csv_data.encode('utf-8'), file_name=f"Data_{int(time.time())}.csv", mime="text/csv", key=f"dl_{msg.get('time')}_{hash(msg['content'][:10])}")
 st.markdown('</div>', unsafe_allow_html=True)
 
-c_res = composer_component(key="composer", data={"input_language": agent["language"]}, on_change=lambda: None)
+c_res = composer_component(key="composer", data={"input_language": agent["language"]})
 
 def process_msg(text: str, img_b64: str = None):
     if not text and not img_b64: return
