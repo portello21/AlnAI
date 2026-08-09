@@ -14,7 +14,7 @@ import streamlit.components.v2 as components
 # ============================================================
 
 st.set_page_config(
-    page_title="Allan AI - Secure",
+    page_title="Allan AI - Core",
     page_icon="🔒",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -24,12 +24,11 @@ DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 MEMORY_FILE = "long_term_memory.json"
 APP_PASSWORD = st.secrets.get("APP_PASSWORD", "Allan2026@Pass")
 
-# Controle de sessão autenticada
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 
 # ============================================================
-# TELA DE LOGIN / AUTENTICAÇÃO
+# LOGIN
 # ============================================================
 
 if not st.session_state.authenticated:
@@ -50,23 +49,40 @@ if not st.session_state.authenticated:
             st.session_state.authenticated = True
             st.rerun()
         else:
-            st.error("Senha incorreta. Acesso negado.")
+            st.error("Senha incorreta.")
             
     st.markdown("</div>", unsafe_allow_html=True)
     st.stop()
 
 # ============================================================
-# GERENCIAMENTO DE MEMÓRIA DE LONGO PRAZO
+# BASE DE DADOS DE LONGO PRAZO PRÉ-CARREGADA
 # ============================================================
 
+DEFAULT_PROFILE = [
+    "NOME COMPLETO: Allan Vitor Portello",
+    "IDADE/NASCIMENTO: 26 anos (21 de Abril de 2000)",
+    "LOCALIZAÇÃO: Hamilton, Ontario, Canadá",
+    "ESTREITAMENTO DE IDIOMA: Português (Brasil) e Inglês (Canadá)",
+    "ESTILO DE COMUNICAÇÃO: Estritamente racional, lógico, focado em fatos, sem introduções longas ou clichês corporativos. Sentenças curtas, alta densidade de informação e objetividade.",
+    "MOEDA DE REFERÊNCIA: Dólar Canadense (CAD / $)",
+    "FINANÇAS: Monitoramento estrito de despesas e orçamento em CAD ($) usando tabelas de lançamentos e saldos líquidos.",
+    "FITNESS & DIETA: Musculação focada em hipertrofia (RIR/RPE), metas de alta ingestão de proteína (g/kg), rotinas com ovos, frango e carne magra.",
+    "TECNOLOGIA & INFRAESTRUTURA: Uso de PowerShell, automações de scripts, contêineres Docker, soluções multiagentes, hardware e periféricos de alta performance.",
+    "INGLÊS: Ajuste de vocabulário e expressões naturais do Canadá com correções objetivas."
+]
+
 def load_long_term_memory() -> dict:
+    memory_data = {"user_facts": DEFAULT_PROFILE.copy(), "history": {}}
     if os.path.exists(MEMORY_FILE):
         try:
             with open(MEMORY_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                saved = json.load(f)
+                # Garante que os fatos padrão sempre existam combinados com os aprendidos
+                facts = list(set(DEFAULT_PROFILE + saved.get("user_facts", [])))
+                return {"user_facts": facts, "history": saved.get("history", {})}
         except Exception:
             pass
-    return {"user_facts": ["Usuário: Allan Vitor Portello", "Localização: Hamilton, Ontario, Canadá", "Moeda: CAD ($)"], "history": {}}
+    return memory_data
 
 def save_long_term_memory(memory_data: dict) -> None:
     try:
@@ -79,7 +95,7 @@ if "long_memory" not in st.session_state:
     st.session_state.long_memory = load_long_term_memory()
 
 # ============================================================
-# AGENTES E ESTRUTURA DO SISTEMA
+# AGENTES E ESTRUTURA
 # ============================================================
 
 AGENTS = {
@@ -88,49 +104,49 @@ AGENTS = {
         "icon": "🤖",
         "description": "Assistente central. Inteligência e triagem automatizada.",
         "language": "pt-BR",
-        "system_prompt": "Você é o Allan AI Core. Responda de forma direta, clara e objetiva. Moeda padrão: CAD ($). Cidade: Hamilton, Ontario."
+        "system_prompt": "Você é o Allan AI Core. Responda de forma direta, clara, densa e extremamente objetiva. Padrão: CAD ($), Hamilton/Ontario."
     },
     "personal": {
         "name": "Personal Agent",
         "icon": "👤",
         "description": "Gestão de tempo, rotina diária e organização pessoal.",
         "language": "pt-BR",
-        "system_prompt": "Você é o Personal Agent do Allan AI. Foco em gestão de tempo e rotinas em Hamilton/Ontario."
+        "system_prompt": "Você é o Personal Agent do Allan AI. Foco em gestão de tempo e produtividade operacional em Hamilton, Ontario."
     },
     "finance": {
         "name": "Finance Agent",
         "icon": "💰",
         "description": "Análise financeira, orçamento e extratos em CAD ($).",
         "language": "pt-BR",
-        "system_prompt": "Você é o Finance Agent do Allan AI. Manter cálculos estritamente em Dólar Canadense (CAD / $)."
+        "system_prompt": "Você é o Finance Agent do Allan AI. Manter cálculos estritamente em Dólar Canadense (CAD / $). Use tabelas Markdown."
     },
     "tech": {
         "name": "Tech Agent",
         "icon": "💻",
         "description": "Engenharia de software, PowerShell e Docker.",
         "language": "pt-BR",
-        "system_prompt": "Você é o Tech Agent do Allan AI. Forneça scripts limpos e comandos operacionais."
+        "system_prompt": "Você é o Tech Agent do Allan AI. Forneça scripts limpos em PowerShell, comandos Docker e arquitetura robusta."
     },
     "coach": {
         "name": "Coach Agent",
         "icon": "🏋️",
         "description": "Treinos para hipertrofia e acompanhamento nutricional.",
         "language": "pt-BR",
-        "system_prompt": "Você é o Coach Agent do Allan AI. Planejamento de hipertrofia (RIR/RPE) e meta proteica em g/kg."
+        "system_prompt": "Você é o Coach Agent do Allan AI. Planejamento de hipertrofia (RIR/RPE) e metas proteicas em g/kg."
     },
     "business": {
         "name": "Business Agent",
         "icon": "💼",
         "description": "Estratégia comercial, precificação e orçamentos em CAD ($).",
         "language": "pt-BR",
-        "system_prompt": "Você é o Business Agent do Allan AI. Calcule custos operacionais e margem de lucro em CAD ($)."
+        "system_prompt": "Você é o Business Agent do Allan AI. Calcule custos operacionais, margem de lucro e precificação em CAD ($)."
     },
     "english": {
         "name": "English Teacher",
         "icon": "🇺🇸",
         "description": "Professor de inglês: tradução, correções e pronúncia.",
         "language": "en-US",
-        "system_prompt": "You are the English Teacher agent of Allan AI. Help improve English using natural Canadian expressions."
+        "system_prompt": "You are the English Teacher agent of Allan AI. Help improve English using natural Canadian expressions and clear corrections."
     },
 }
 
@@ -219,7 +235,7 @@ def ask_deepseek(agent_id: str, history: list[dict[str, Any]]) -> str:
     api_key = st.secrets["DEEPSEEK_API_KEY"]
     agent = AGENTS[agent_id]
 
-    # Injeção de Memória de Longo Prazo no System Prompt
+    # Injeção Automática de Memória de Longo Prazo
     memory_facts = "\n".join(st.session_state.long_memory.get("user_facts", []))
     system_content = f"{agent['system_prompt'].strip()}\n\n[MEMÓRIA DE LONGO PRAZO DO USUÁRIO]:\n{memory_facts}"
 
