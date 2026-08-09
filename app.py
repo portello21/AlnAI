@@ -40,7 +40,7 @@ if "authenticated" not in st.session_state: st.session_state.authenticated = Fal
 if "current_profile" not in st.session_state: st.session_state.current_profile = None
 if "logout_requested" not in st.session_state: st.session_state.logout_requested = False
 
-# Tratamento de Logout (Deleta Cookie e Reinicia)
+# Tratamento de Logout
 if st.session_state.logout_requested:
     cm_logout = stx.CookieManager(key="logout_cm")
     cm_logout.delete("rog_ai_profile")
@@ -96,17 +96,17 @@ AGENTS = {
     "orchestrator": {
         "name": "ROG AI Core", 
         "icon": "🧠", 
-        "description": "Nível Gemini Pro. Inteligência central.", 
+        "description": "Inteligência primária. Respostas rápidas.", 
         "language": "pt-BR", 
-        "api_model": "deepseek-reasoner", 
-        "system_prompt": "Você é a ROG AI, a inteligência artificial primária de elite do usuário atual, operando no nível de raciocínio profundo do Gemini Pro e GPT-4. Suas responsabilidades vitais: 1. Entregar respostas pragmáticas e conclusivas, gerando arquivos, códigos completos (Python, PowerShell) e rotas matemáticas quando solicitado. 2. Atuar como analista crítico para os problemas financeiros e de rotina do usuário no Canadá. 3. Dar opiniões sem filtros corporativos genéricos; seja afiado, racional e inteligente. Analise profundamente e estruture toda saída em Markdown impecável."
+        "api_model": "deepseek-chat", 
+        "system_prompt": "Você é a ROG AI, a inteligência artificial primária de elite do usuário atual, operando com velocidade e precisão absurdas. Suas responsabilidades vitais: 1. Entregar respostas pragmáticas e conclusivas, gerando arquivos, códigos e lógicas quando solicitado. 2. Atuar como analista crítico para problemas financeiros e de rotina no Canadá. 3. Dar opiniões sem filtros corporativos genéricos; seja afiado, racional e direto ao ponto. Estruture toda saída em Markdown impecável."
     },
     "personal": {"name": "Personal Agent", "icon": "👤", "description": "Logística e leitura de documentos.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Personal Agent. Leia documentos burocráticos, traduza burocracias e otimize a rotina logística (ex: cronogramas de mudança)."},
-    "finance": {"name": "Finance Agent", "icon": "💰", "description": "Planejamento futuro e rotas.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Finance Agent. Estruture saídas de dívidas e planilhas de longo prazo matemáticas em CAD."},
-    "tech": {"name": "Tech Agent", "icon": "💻", "description": "Scripts, Windows, Hardware e CS2.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Tech Agent. Especialista em latência, undervolt, otimização do Windows e engenharia para ganho de FPS no CS2. Forneça scripts literais e guias absolutos."},
+    "finance": {"name": "Finance Agent", "icon": "💰", "description": "Planejamento e rotas matemáticas.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Finance Agent. Estruture saídas de dívidas e planilhas de longo prazo matemáticas em CAD."},
+    "tech": {"name": "Tech Agent", "icon": "💻", "description": "Otimização Windows, Hardware e CS2.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Tech Agent. Especialista em latência, undervolt, otimização do Windows e engenharia para ganho de FPS no CS2. Forneça scripts literais e guias absolutos."},
     "coach": {"name": "Coach Agent", "icon": "🏋️", "description": "Endocrinologia e biomecânica.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Coach Agent. Foque na via metabólica mTOR, anabolismo, timing de nutrientes e periodizações intensas."},
-    "business": {"name": "Business Agent", "icon": "💼", "description": "Geração de renda faceless.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Business Agent. Desenhe negócios online 'faceless', tráfego e monetização passo a passo."},
-    "english": {"name": "English Teacher", "icon": "🇺🇸", "description": "Fluência avançada.", "language": "en-US", "api_model": "deepseek-chat", "system_prompt": "Você é o English Teacher. Destrua os vícios de tradução do português. Foque na fluência real do Canadá."},
+    "business": {"name": "Business Agent", "icon": "💼", "description": "Geração de renda digital.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Business Agent. Desenhe negócios online 'faceless', tráfego e monetização passo a passo."},
+    "english": {"name": "English Teacher", "icon": "🇺🇸", "description": "Fluência extrema e gramática.", "language": "en-US", "api_model": "deepseek-chat", "system_prompt": "Você é o English Teacher. Destrua os vícios de tradução do português. Foque na fluência real do Canadá."},
 }
 
 if "current_agent" not in st.session_state: st.session_state.current_agent = "orchestrator"
@@ -139,18 +139,17 @@ def ask_deepseek(agent_id: str, history: list, user_query: str) -> str:
             messages.append({"role": item["role"], "content": item["content"]})
     
     try:
-        response = requests.post(DEEPSEEK_URL, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": target_model, "messages": messages, "temperature": 0.3}, timeout=90)
+        response = requests.post(DEEPSEEK_URL, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": target_model, "messages": messages, "temperature": 0.3}, timeout=120)
         response.raise_for_status()
         data = response.json()
         reasoning = data["choices"][0]["message"].get("reasoning_content", "")
         content = data["choices"][0]["message"].get("content", "")
-        return f"> *Processamento lógico avançado executado via R1.*\\n\\n{content}" if reasoning and target_model == "deepseek-reasoner" else content.strip()
+        return f"> *Processamento avançado executado via R1.*\\n\\n{content}" if reasoning and target_model == "deepseek-reasoner" else content.strip()
     except Exception as e:
-        return f"❌ Erro na Comunicação com o Motor Principal: {str(e)}"
+        return f"❌ Erro na Comunicação com a API: {str(e)}"
 
 # ================= RENDERIZAÇÃO GERAL =================
 
-# Aplicação do CSS AMOLED Premium
 st.markdown('''
 <style>
 :root { --amoled:#080d10; --bubble-ai:#172229; --bubble-user:#075e54; --border:#263840; --text:#e9edef; --muted:#8696a0; --green:#00a884; }
@@ -161,16 +160,18 @@ st.markdown('''
 .rog-mark { width:64px; height:64px; margin:0 auto 16px; display:flex; align-items:center; justify-content:center; border-radius:18px; background:linear-gradient(145deg,#123d35,#0d211d); border:1px solid rgba(0,168,132,.45); color:#36d9b3; font-size:28px; font-weight:800; }
 .chat-header { min-height:70px; display:flex; align-items:center; gap:13px; background:rgba(17,28,34,.92); border:1px solid var(--border); border-radius:15px; padding:10px 16px; margin-bottom:13px; backdrop-filter:blur(10px); }
 .chat-avatar { width:46px; height:46px; display:flex; align-items:center; justify-content:center; background:linear-gradient(145deg,#1a2a31,#0d171c); border:1px solid #344750; border-radius:14px; font-size:23px; }
-.chat-agent-name { color:var(--text); font-size:16px; font-weight:700; }
-.chat-agent-desc { color:var(--muted); font-size:11px; margin-top:3px; }
-.message-user,.message-ai { display:flex; width:100%; margin:8px 0; }
+.chat-agent-name { color:var(--text); font-size:18px; font-weight:700; }
+.chat-agent-desc { color:var(--muted); font-size:12px; margin-top:3px; }
+.message-user,.message-ai { display:flex; width:100%; margin:10px 0; }
 .message-user { justify-content:flex-end; }
 .message-ai { justify-content:flex-start; }
-.bubble-user { max-width:80%; background:linear-gradient(145deg,#075e54,#075449); border:1px solid #0a806f; border-radius:14px 4px 14px 14px; padding:10px 14px; font-size:14px; box-shadow:0 2px 7px rgba(0,0,0,.18); }
-.bubble-ai { max-width:84%; background:linear-gradient(145deg,#172229,#152027); border:1px solid var(--border); border-radius:4px 14px 14px 14px; padding:10px 14px; font-size:14px; box-shadow:0 2px 7px rgba(0,0,0,.18); }
-.message-time { color:rgba(233,237,239,.48); font-size:9px; text-align:right; margin-top:5px; }
+.bubble-user { max-width:80%; background:linear-gradient(145deg,#075e54,#075449); border:1px solid #0a806f; border-radius:14px 4px 14px 14px; padding:12px 16px; font-size:16px; line-height: 1.5; box-shadow:0 2px 7px rgba(0,0,0,.18); }
+.bubble-ai { max-width:84%; background:linear-gradient(145deg,#172229,#152027); border:1px solid var(--border); border-radius:4px 14px 14px 14px; padding:12px 18px; font-size:16px; line-height: 1.6; box-shadow:0 2px 7px rgba(0,0,0,.18); }
+.bubble-ai p, .bubble-user p, .bubble-ai li { font-size: 16px !important; }
+.bubble-ai h1, .bubble-ai h2, .bubble-ai h3 { margin-top: 14px; margin-bottom: 10px; }
+.message-time { color:rgba(233,237,239,.48); font-size:10px; text-align:right; margin-top:6px; }
 [data-testid="stChatInput"] { background:transparent !important; border:0 !important; }
-[data-testid="stChatInput"] textarea { background:#111c22 !important; color:#e9edef !important; border:1px solid var(--border) !important; border-radius: 14px !important; }
+[data-testid="stChatInput"] textarea { background:#111c22 !important; color:#e9edef !important; border:1px solid var(--border) !important; border-radius: 14px !important; font-size: 16px !important; }
 [data-testid="stChatInput"] textarea:focus { border-color:var(--green) !important; box-shadow:0 0 0 1px var(--green) !important; }
 [data-testid="stSidebar"] button { border-radius:10px !important; border:1px solid transparent !important; background:transparent !important; color:var(--text) !important; text-align:left !important; padding:8px 12px !important; transition:0.2s; }
 [data-testid="stSidebar"] button:hover { background:#17232a !important; border-color:var(--border) !important; }
@@ -180,7 +181,6 @@ st.markdown('''
 
 # Lógica de Roteamento Isolado
 if not st.session_state.authenticated:
-    # Ler Cookies apenas na tela de login! Evita travamento no chat.
     cm_login = stx.CookieManager(key="login_cm")
     cookie_profile = cm_login.get(cookie="rog_ai_profile")
     
@@ -212,7 +212,6 @@ if not st.session_state.authenticated:
     st.markdown('</div>', unsafe_allow_html=True)
     
 else:
-    # AMBIENTE AUTENTICADO: NENHUM COMPONENTE DE COOKIE RODA AQUI.
     current_profile = st.session_state.current_profile
     if "conversations" not in st.session_state:
         st.session_state.conversations = st.session_state.long_memory[current_profile].get("history", {a_id: [] for a_id in AGENTS})
@@ -221,7 +220,7 @@ else:
         st.markdown(f'''
             <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
                 <div class="rog-mark" style="width:36px; height:36px; font-size:16px; margin:0;">R</div>
-                <div><div style="font-weight:bold; font-size:18px;">ROG AI</div><div style="font-size:10px; color:#00a884;">● {current_profile} Online</div></div>
+                <div><div style="font-weight:bold; font-size:18px;">ROG AI</div><div style="font-size:11px; color:#00a884;">● {current_profile} Online</div></div>
             </div>
             <hr style="border-color:#263840; margin:10px 0;">
         ''', unsafe_allow_html=True)
@@ -253,9 +252,8 @@ else:
         else:
             content_html = msg["content"].replace("\\n", "<br>")
             lbl = msg.get("agent", {}).get("name", "ROG AI")
-            st.markdown(f'<div class="message-ai"><div class="bubble-ai"><div style="color:#00a884; font-size:10px; font-weight:bold; margin-bottom:4px;">{msg.get("agent", {}).get("icon", "🤖")} {lbl}</div>{msg["content"]}<div class="message-time">{msg.get("time", "")}</div></div></div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="message-ai"><div class="bubble-ai"><div style="color:#00a884; font-size:11px; font-weight:bold; margin-bottom:6px;">{msg.get("agent", {}).get("icon", "🤖")} {lbl}</div>{msg["content"]}<div class="message-time">{msg.get("time", "")}</div></div></div>', unsafe_allow_html=True)
 
-    # NATIVE CHAT INPUT - 100% Estável
     user_input = st.chat_input(f"Mensagem para {agent['name']}...")
     if user_input:
         st.session_state.conversations[agent_id].append({"role": "user", "content": user_input, "time": time.strftime("%H:%M"), "agent": agent})
@@ -263,7 +261,6 @@ else:
         save_long_term_memory(st.session_state.long_memory)
         st.rerun()
 
-    # DISPARO DA API DEEPSEEK PÓS-RERUN
     if len(history) > 0 and history[-1]["role"] == "user":
         with st.spinner(f"Aguarde, {agent['name']} está processando..."):
             ans = ask_deepseek(agent_id, history, history[-1]["content"])
