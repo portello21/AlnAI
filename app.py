@@ -35,6 +35,9 @@ def init_supabase() -> Client | None:
 
 supabase = init_supabase()
 
+# MOTOR DE COOKIES GLOBAL: Fica ativo 100% do tempo para não perder o sincronismo.
+cookie_manager = stx.CookieManager(key="rog_cookies")
+
 # Inicialização de Variáveis de Sessão
 if "authenticated" not in st.session_state: st.session_state.authenticated = False
 if "current_profile" not in st.session_state: st.session_state.current_profile = None
@@ -42,8 +45,7 @@ if "logout_requested" not in st.session_state: st.session_state.logout_requested
 
 # Tratamento de Logout
 if st.session_state.logout_requested:
-    cm_logout = stx.CookieManager(key="logout_cm")
-    cm_logout.delete("rog_ai_profile")
+    cookie_manager.delete("rog_ai_profile")
     st.session_state.authenticated = False
     st.session_state.current_profile = None
     st.session_state.logout_requested = False
@@ -181,8 +183,8 @@ st.markdown('''
 
 # Lógica de Roteamento Isolado
 if not st.session_state.authenticated:
-    cm_login = stx.CookieManager(key="login_cm")
-    cookie_profile = cm_login.get(cookie="rog_ai_profile")
+    # Ler Cookies de forma global
+    cookie_profile = cookie_manager.get(cookie="rog_ai_profile")
     
     if cookie_profile in PASSWORDS:
         st.session_state.authenticated = True
@@ -203,7 +205,7 @@ if not st.session_state.authenticated:
     if st.button("Autenticar", use_container_width=True, type="primary"):
         if input_pass == PASSWORDS[profile_choice]:
             if lembrar_me:
-                cm_login.set("rog_ai_profile", profile_choice, expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
+                cookie_manager.set("rog_ai_profile", profile_choice, expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
             st.session_state.authenticated = True
             st.session_state.current_profile = profile_choice
             st.rerun()
