@@ -15,7 +15,7 @@ import extra_streamlit_components as stx
 from duckduckgo_search import DDGS
 from supabase import create_client, Client
 
-st.set_page_config(page_title="ROG AI - Cloud Memory", page_icon="🔒", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="ROG AI - Advanced Core", page_icon="🧠", layout="wide", initial_sidebar_state="expanded")
 
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 MEMORY_FILE = "long_term_memory.json"
@@ -42,50 +42,11 @@ cookie_manager = stx.CookieManager(key="rog_cookies")
 if "authenticated" not in st.session_state: st.session_state.authenticated = False
 if "current_profile" not in st.session_state: st.session_state.current_profile = None
 
-cookie_profile = cookie_manager.get(cookie="rog_ai_profile")
-if cookie_profile in PASSWORDS and not st.session_state.authenticated:
-    st.session_state.authenticated = True
-    st.session_state.current_profile = cookie_profile
-    st.rerun()
-
 if not st.session_state.authenticated:
-    st.markdown('''
-    <style>
-    .stApp { background: radial-gradient(circle at 50% 10%, rgba(0,168,132,.10), transparent 30%), linear-gradient(180deg,#070b0e,#0b141a) !important; color:#e9edef !important; }
-    [data-testid="stHeader"] { background:transparent !important; }
-    .main .block-container { max-width:430px; min-height:78vh; padding:52px 34px 30px; background:linear-gradient(145deg,#121d23,#0c1419); border:1px solid #263840; border-radius:24px; box-shadow:0 25px 80px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.02); }
-    .rog-login-shell { padding:4px 0 20px; text-align:center; }
-    .rog-login-mark { width:68px; height:68px; margin:0 auto 16px; display:flex; align-items:center; justify-content:center; border-radius:19px; background:linear-gradient(145deg,#123d35,#0d211d); border:1px solid rgba(0,168,132,.45); color:#36d9b3; font-size:30px; font-weight:800; }
-    .rog-login-title { color:#eef3f5; font-size:28px; font-weight:760; letter-spacing:-.7px; }
-    .rog-login-subtitle { color:#84939c; font-size:13px; margin:5px 0 22px; }
-    .rog-login-divider { height:1px; background:#263840; margin-bottom:20px; }
-    div[data-testid="stSelectbox"] label, div[data-testid="stTextInput"] label { color:#a9b6bc !important; font-size:12px !important; }
-    div[data-testid="stSelectbox"] > div > div, div[data-testid="stTextInput"] input { background:#0b141a !important; color:#e9edef !important; border:1px solid #2a3942 !important; border-radius:12px !important; }
-    div[data-testid="stTextInput"] input:focus { border-color:#00a884 !important; box-shadow:0 0 0 1px #00a884 !important; }
-    div[data-testid="stCheckbox"] label { color:#8696a0 !important; font-size:12px !important; }
-    .rog-login-footer { color:#596970; font-size:10px; margin-top:18px; letter-spacing:.4px; text-align:center; }
-    </style>
-    <div class="rog-login-shell">
-        <div class="rog-login-mark">R</div>
-        <div class="rog-login-title">ROG AI</div>
-        <div class="rog-login-subtitle">Inteligência multiagente · memória privada · acesso seguro</div>
-        <div class="rog-login-divider"></div>
-    </div>
-    ''', unsafe_allow_html=True)
-    profile_choice = st.selectbox("Perfil", ["Allan", "Beatriz", "Natan", "Tainan"])
-    input_pass = st.text_input("Senha", type="password")
-    lembrar_me = st.checkbox("Lembrar de mim (30 dias)")
-    if st.button("Entrar", use_container_width=True, type="primary"):
-        if input_pass == PASSWORDS[profile_choice]:
-            st.session_state.authenticated = True
-            st.session_state.current_profile = profile_choice
-            if lembrar_me:
-                cookie_manager.set("rog_ai_profile", profile_choice, expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
-            st.rerun()
-        else:
-            st.error("Falha de autenticação.")
-    st.markdown('<div class="rog-login-footer">ROG AI · acesso autenticado</div>', unsafe_allow_html=True)
-    st.stop()
+    cookie_profile = cookie_manager.get(cookie="rog_ai_profile")
+    if cookie_profile in PASSWORDS:
+        st.session_state.authenticated = True
+        st.session_state.current_profile = cookie_profile
 
 PROFILES = {
     "Allan": ["IDENTIDADE: Allan Vitor Portello, 26 anos (21/04/2000). Altura: 1.90m, Peso: ~118.9kg.", "FAMÍLIA: Casado com Beatriz (agronomia/A&W).", "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026).", "TRABALHO: Setor de limpeza no Canadá com colega Serdar. Sem diploma.", "METAS: Plano de CAD 5.000 (faculdade Beatriz) para set/2026. Troca do Mazda 3 (2012).", "TECH & GAMES: Joga CS2 competitivo. Monta PCs de alta performance.", "FITNESS: Musculação na Crunch Fitness. Dieta hiperproteica.", "ESTILO: Racional, lógico, sem clichês. Respostas densas e objetivas.", "MOEDA: Dólar Canadense (CAD)."],
@@ -132,7 +93,14 @@ if "long_memory" not in st.session_state: st.session_state.long_memory = load_lo
 if "last_payload_hash" not in st.session_state: st.session_state.last_payload_hash = ""
 
 AGENTS = {
-    "orchestrator": {"name": "ROG AI Core", "icon": "🤖", "description": "Inteligência central e triagem.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o ROG AI Core. Diretrizes estritas: 1. Objetividade máxima. 2. Links diretos. 3. Formatação Markdown."},
+    "orchestrator": {
+        "name": "ROG AI Core", 
+        "icon": "🧠", 
+        "description": "Inteligência central de alta capacidade.", 
+        "language": "pt-BR", 
+        "api_model": "deepseek-reasoner", 
+        "system_prompt": "Você é o ROG AI Core, o cérebro central do sistema, operando com inteligência equivalente ou superior ao Gemini Pro/GPT-4. Você é o assistente executivo definitivo do usuário atual. Suas funções abrangem: 1. Geração de arquivos, códigos e documentos completos. 2. Resolução pragmática e profunda de problemas de vida, finanças e tecnologia. 3. Fornecer opiniões lógicas, diretas e sem filtros corporativos. 4. Otimizar a rotina e os planos do usuário. Utilize todo o seu poder de raciocínio profundo. Entregue soluções definitivas estruturadas em Markdown."
+    },
     "personal": {"name": "Personal Agent", "icon": "👤", "description": "Logística, leitura de documentos.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Personal Agent. Especialista em decodificar informações, leitura de documentos e gestão de rotina. Simplifique e traduza dados burocráticos."},
     "finance": {"name": "Finance Agent", "icon": "💰", "description": "Planejamento futuro e rotas.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Finance Agent. Especialista em planejamento de futuro e rotas matemáticas para saída de dívidas. Crie planos de ação e cronogramas de amortização estruturados em tabelas."},
     "tech": {"name": "Tech Agent", "icon": "💻", "description": "Otimização extrema, CS2 e hardware.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Tech Agent. Engenheiro focado em otimização de desempenho, CS2, overclock, undervolt, BIOS e latência. Entregue scripts operacionais e comandos exatos."},
@@ -141,9 +109,7 @@ AGENTS = {
     "english": {"name": "English Teacher", "icon": "🇺🇸", "description": "Transição linguística.", "language": "en-US", "api_model": "deepseek-chat", "system_prompt": "You are the English Teacher. Especialista em transição do Português para o Inglês. Corrija vícios de tradução literal. Foque no uso natural do inglês Canadense."},
 }
 
-current_profile = st.session_state.current_profile
 if "current_agent" not in st.session_state: st.session_state.current_agent = "orchestrator"
-st.session_state.conversations = st.session_state.long_memory[current_profile].get("history", {a_id: [] for a_id in AGENTS})
 
 def auto_web_search(query: str) -> str:
     trigger_words = ["procure", "busque", "pesquise", "internet", "google", "web", "preço", "promoção", "notícia", "hoje", "agora", "bestbuy", "amazon", "mercado"]
@@ -161,8 +127,8 @@ def ask_deepseek(agent_id: str, history: list[dict[str, Any]], user_query: str, 
     agent = AGENTS[agent_id]
     target_model = agent.get("api_model", "deepseek-chat")
     
-    memory_facts = "\n- ".join(st.session_state.long_memory[current_profile].get("user_facts", []))
-    system_content = f"{agent['system_prompt'].strip()}\n\n[MEMÓRIA - PERFIL: {current_profile.upper()}]:\n- {memory_facts}"
+    memory_facts = "\n- ".join(st.session_state.long_memory[st.session_state.current_profile].get("user_facts", []))
+    system_content = f"{agent['system_prompt'].strip()}\n\n[MEMÓRIA - PERFIL: {st.session_state.current_profile.upper()}]:\n- {memory_facts}"
     
     web_context = auto_web_search(user_query)
     if web_context: system_content += web_context
@@ -184,7 +150,7 @@ def ask_deepseek(agent_id: str, history: list[dict[str, Any]], user_query: str, 
     content = data["choices"][0]["message"].get("content", "")
     return f"> *Raciocínio lógico executado pelo motor DeepSeek-R1.*\n\n{content}" if reasoning and target_model == "deepseek-reasoner" else content.strip()
 
-st.markdown('''
+st.markdown("""
 <style>
 :root { --amoled:#080d10; --sidebar:#0e171c; --sidebar-2:#111c22; --bubble-ai:#172229; --bubble-user:#075e54; --border:#263840; --border-soft:rgba(134,150,160,.14); --green:#00a884; --text:#e9edef; --muted:#8696a0; }
 .stApp { background:radial-gradient(circle at 75% -10%,rgba(0,168,132,.055),transparent 30%),linear-gradient(180deg,#080d10 0%,#0b141a 100%) !important; color:var(--text) !important; }
@@ -230,7 +196,7 @@ st.markdown('''
 [data-testid="stDownloadButton"] button:hover { border-color:#00a884 !important; color:#e9edef !important; }
 @media (max-width:900px) { .main .block-container { padding:8px 8px 95px; } .chat-history { padding-left:1%; padding-right:1%; } .bubble-user { max-width:90%; } .bubble-ai { max-width:94%; } .chat-header::after { display:none; } }
 </style>
-''', unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 COMPOSER_HTML = """
 <div class="composer-root">
@@ -304,100 +270,146 @@ export default function(component) {
     sendBtn.onclick = send; input.onkeydown = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } };
 }
 """
-composer_component = components.component(name="rog_ai_composer", html=COMPOSER_HTML, css=COMPOSER_CSS, js=COMPOSER_JS)
 
-with st.sidebar:
-    st.markdown(f"""
-        <div class="rog-sidebar-head">
-            <div class="rog-brand-row">
-                <div class="rog-brand-mark">R</div>
-                <div>
-                    <div class="rog-brand-title">ROG AI</div>
-                    <div class="rog-brand-subtitle">Multiagent Intelligence</div>
-                </div>
-            </div>
-            <div class="rog-profile-chip">● {current_profile} · sessão ativa</div>
-        </div>
-        <div class="rog-section-label">AGENTES ESPECIALISTAS</div>
+def render_login():
+    st.markdown("""
+    <style>
+    .main .block-container { max-width:430px; min-height:78vh; padding:52px 34px 30px; background:linear-gradient(145deg,#121d23,#0c1419); border:1px solid #263840; border-radius:24px; box-shadow:0 25px 80px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.02); }
+    .rog-login-shell { padding:4px 0 20px; text-align:center; }
+    .rog-login-mark { width:68px; height:68px; margin:0 auto 16px; display:flex; align-items:center; justify-content:center; border-radius:19px; background:linear-gradient(145deg,#123d35,#0d211d); border:1px solid rgba(0,168,132,.45); color:#36d9b3; font-size:30px; font-weight:800; }
+    .rog-login-title { color:#eef3f5; font-size:28px; font-weight:760; letter-spacing:-.7px; }
+    .rog-login-subtitle { color:#84939c; font-size:13px; margin:5px 0 22px; }
+    .rog-login-divider { height:1px; background:#263840; margin-bottom:20px; }
+    div[data-testid="stSelectbox"] label, div[data-testid="stTextInput"] label { color:#a9b6bc !important; font-size:12px !important; }
+    div[data-testid="stSelectbox"] > div > div, div[data-testid="stTextInput"] input { background:#0b141a !important; color:#e9edef !important; border:1px solid #2a3942 !important; border-radius:12px !important; }
+    div[data-testid="stTextInput"] input:focus { border-color:#00a884 !important; box-shadow:0 0 0 1px #00a884 !important; }
+    div[data-testid="stCheckbox"] label { color:#8696a0 !important; font-size:12px !important; }
+    .rog-login-footer { color:#596970; font-size:10px; margin-top:18px; letter-spacing:.4px; text-align:center; }
+    </style>
+    <div class="rog-login-shell">
+        <div class="rog-login-mark">R</div>
+        <div class="rog-login-title">ROG AI</div>
+        <div class="rog-login-subtitle">Inteligência multiagente · memória privada · acesso seguro</div>
+        <div class="rog-login-divider"></div>
+    </div>
     """, unsafe_allow_html=True)
-    for a_id, a_data in AGENTS.items():
-        sel = (st.session_state.current_agent == a_id)
-        if st.button(f"{a_data['icon']}  {a_data['name']}", key=f"agent_{a_id}", use_container_width=True, type="primary" if sel else "secondary"):
-            if not sel: st.session_state.current_agent = a_id; st.rerun()
-    st.markdown('<div class="rog-section-label" style="margin-top:18px;">CONTA</div>', unsafe_allow_html=True)
-    if st.button("↪  Sair da sessão", use_container_width=True):
-        cookie_manager.delete("rog_ai_profile")
-        st.session_state.authenticated = False
-        st.session_state.current_profile = None
-        st.rerun()
+    profile_choice = st.selectbox("Perfil", ["Allan", "Beatriz", "Natan", "Tainan"])
+    input_pass = st.text_input("Senha", type="password")
+    lembrar_me = st.checkbox("Lembrar de mim (30 dias)")
+    if st.button("Entrar", use_container_width=True, type="primary"):
+        if input_pass == PASSWORDS[profile_choice]:
+            st.session_state.authenticated = True
+            st.session_state.current_profile = profile_choice
+            if lembrar_me:
+                cookie_manager.set("rog_ai_profile", profile_choice, expires_at=datetime.datetime.now() + datetime.timedelta(days=30))
+            st.rerun()
+        else:
+            st.error("Falha de autenticação.")
+    st.markdown('<div class="rog-login-footer">ROG AI · acesso autenticado</div>', unsafe_allow_html=True)
 
-agent_id = st.session_state.current_agent
-agent = AGENTS[agent_id]
-st.markdown(f"""
-<div class="chat-header">
-    <div class="chat-avatar">{agent["icon"]}</div>
-    <div>
-        <div class="chat-agent-name">{html.escape(agent["name"])}</div>
-        <div class="chat-agent-description">{html.escape(agent["description"])}</div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-history = st.session_state.conversations.get(agent_id, [])
-st.markdown('<div class="chat-history">', unsafe_allow_html=True)
-for msg in history:
-    if msg["role"] == "user":
+def render_chat():
+    current_profile = st.session_state.current_profile
+    if "conversations" not in st.session_state:
+        st.session_state.conversations = st.session_state.long_memory[current_profile].get("history", {a_id: [] for a_id in AGENTS})
+    
+    with st.sidebar:
         st.markdown(f"""
-<div class="message-user">
-    <div class="bubble-user">
-        {html.escape(msg["content"])}
-        <div class="message-time">{html.escape(msg.get("time", ""))}</div>
+            <div class="rog-sidebar-head">
+                <div class="rog-brand-row">
+                    <div class="rog-brand-mark">R</div>
+                    <div>
+                        <div class="rog-brand-title">ROG AI</div>
+                        <div class="rog-brand-subtitle">Multiagent Intelligence</div>
+                    </div>
+                </div>
+                <div class="rog-profile-chip">● {current_profile} · sessão ativa</div>
+            </div>
+            <div class="rog-section-label">AGENTES ESPECIALISTAS</div>
+        """, unsafe_allow_html=True)
+        for a_id, a_data in AGENTS.items():
+            sel = (st.session_state.current_agent == a_id)
+            if st.button(f"{a_data['icon']}  {a_data['name']}", key=f"agent_{a_id}", use_container_width=True, type="primary" if sel else "secondary"):
+                if not sel: st.session_state.current_agent = a_id; st.rerun()
+        st.markdown('<div class="rog-section-label" style="margin-top:18px;">CONTA</div>', unsafe_allow_html=True)
+        if st.button("↪  Sair da sessão", use_container_width=True):
+            cookie_manager.delete("rog_ai_profile")
+            st.session_state.authenticated = False
+            st.session_state.current_profile = None
+            st.rerun()
+
+    agent_id = st.session_state.current_agent
+    agent = AGENTS[agent_id]
+    st.markdown(f"""
+    <div class="chat-header">
+        <div class="chat-avatar">{agent["icon"]}</div>
+        <div>
+            <div class="chat-agent-name">{html.escape(agent["name"])}</div>
+            <div class="chat-agent-description">{html.escape(agent["description"])}</div>
+        </div>
     </div>
-</div>
-""", unsafe_allow_html=True)
-    else:
-        content_html = re.sub(r"`(.*?)`", r"<pre><code>\1</code></pre>", html.escape(msg["content"]), flags=re.S).replace("\n", "<br>")
-        lbl = msg.get("agent", {}).get("name", "ROG AI")
-        st.markdown(f"""
-<div class="message-ai">
-    <div class="bubble-ai">
-        <div>{msg.get("agent", {}).get("icon", "🤖")} {html.escape(lbl)}</div>
-        {content_html}
-        <div class="message-time">{html.escape(msg.get("time", ""))}</div>
+    """, unsafe_allow_html=True)
+
+    history = st.session_state.conversations.get(agent_id, [])
+    st.markdown('<div class="chat-history">', unsafe_allow_html=True)
+    for msg in history:
+        if msg["role"] == "user":
+            st.markdown(f"""
+    <div class="message-user">
+        <div class="bubble-user">
+            {html.escape(msg["content"])}
+            <div class="message-time">{html.escape(msg.get("time", ""))}</div>
+        </div>
     </div>
-</div>
-""", unsafe_allow_html=True)
-        if "|" in msg["content"] and "\n|" in msg["content"]:
-            csv_data = "\n".join([line.replace("|", ",").strip().strip(",") for line in msg["content"].split("\n") if "|" in line])
-            st.download_button(label="📥 Baixar Tabela (CSV)", data=csv_data.encode('utf-8'), file_name=f"Data_{int(time.time())}.csv", mime="text/csv", key=f"dl_{msg.get('time')}_{hash(msg['content'][:10])}")
-st.markdown('</div>', unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+        else:
+            content_html = re.sub(r"`(.*?)`", r"<pre><code>\1</code></pre>", html.escape(msg["content"]), flags=re.S).replace("\n", "<br>")
+            lbl = msg.get("agent", {}).get("name", "ROG AI")
+            st.markdown(f"""
+    <div class="message-ai">
+        <div class="bubble-ai">
+            <div>{msg.get("agent", {}).get("icon", "🤖")} {html.escape(lbl)}</div>
+            {content_html}
+            <div class="message-time">{html.escape(msg.get("time", ""))}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+            if "|" in msg["content"] and "\n|" in msg["content"]:
+                csv_data = "\n".join([line.replace("|", ",").strip().strip(",") for line in msg["content"].split("\n") if "|" in line])
+                st.download_button(label="📥 Baixar Tabela (CSV)", data=csv_data.encode('utf-8'), file_name=f"Data_{int(time.time())}.csv", mime="text/csv", key=f"dl_{msg.get('time')}_{hash(msg['content'][:10])}")
+    st.markdown('</div>', unsafe_allow_html=True)
 
-c_res = composer_component(key="composer", data={"input_language": agent["language"]})
+    composer_component = components.component(name="rog_ai_composer", html=COMPOSER_HTML, css=COMPOSER_CSS, js=COMPOSER_JS)
+    c_res = composer_component(key="composer", data={"input_language": agent["language"]})
 
-def process_msg(text: str, img_b64: str = None):
-    if not text and not img_b64: return
-    if agent_id not in st.session_state.conversations: st.session_state.conversations[agent_id] = []
-    
-    msg_content = f"[Imagem Anexada] {text}" if img_b64 else text
+    def process_msg(text: str, img_b64: str = None):
+        if not text and not img_b64: return
+        if agent_id not in st.session_state.conversations: st.session_state.conversations[agent_id] = []
+        
+        msg_content = f"[Imagem Anexada] {text}" if img_b64 else text
+        st.session_state.conversations[agent_id].append({"role": "user", "content": msg_content, "time": time.strftime("%H:%M"), "agent": agent})
+        
+        try:
+            with st.spinner("Processamento DeepSeek R1..." if agent.get("api_model") == "deepseek-reasoner" else "Analisando..."): 
+                ans = ask_deepseek(agent_id, st.session_state.conversations[agent_id], text, img_b64)
+            st.session_state.conversations[agent_id].append({"role": "assistant", "content": ans, "time": time.strftime("%H:%M"), "agent": agent})
+        except Exception as e:
+            st.session_state.conversations[agent_id].append({"role": "assistant", "content": f"Erro: {e}", "time": time.strftime("%H:%M"), "agent": {"icon": "⚠️", "name": "Erro"}})
+        
+        st.session_state.long_memory[current_profile]["history"] = st.session_state.conversations
+        save_long_term_memory(st.session_state.long_memory)
 
-    st.session_state.conversations[agent_id].append({"role": "user", "content": msg_content, "time": time.strftime("%H:%M"), "agent": agent})
-    st.session_state.long_memory[current_profile]["history"] = st.session_state.conversations
-    save_long_term_memory(st.session_state.long_memory)
-    
-    try:
-        with st.spinner("Processamento DeepSeek R1..." if agent.get("api_model") == "deepseek-reasoner" else "Analisando..."): 
-            ans = ask_deepseek(agent_id, st.session_state.conversations[agent_id], text, img_b64)
-        st.session_state.conversations[agent_id].append({"role": "assistant", "content": ans, "time": time.strftime("%H:%M"), "agent": agent})
-    except Exception as e:
-        st.session_state.conversations[agent_id].append({"role": "assistant", "content": f"Erro: {e}", "time": time.strftime("%H:%M"), "agent": {"icon": "⚠️", "name": "Erro"}})
+    if c_res and isinstance(c_res, dict):
+        txt_val = c_res.get("text", "")
+        img_val = c_res.get("image")
+        m_type = c_res.get("type", "")
+        payload_hash = hashlib.md5(f"{txt_val}_{img_val}_{m_type}".encode()).hexdigest()
+        
+        if payload_hash != st.session_state.last_payload_hash:
+            st.session_state.last_payload_hash = payload_hash
+            process_msg(txt_val, img_val)
+            st.rerun()
 
-if c_res and isinstance(c_res, dict):
-    txt_val = c_res.get("text", "")
-    img_val = c_res.get("image")
-    m_type = c_res.get("type", "")
-    payload_hash = hashlib.md5(f"{txt_val}_{img_val}_{m_type}".encode()).hexdigest()
-    
-    if payload_hash != st.session_state.last_payload_hash:
-        st.session_state.last_payload_hash = payload_hash
-        process_msg(txt_val, img_val)
-        st.rerun()
+if st.session_state.authenticated:
+    render_chat()
+else:
+    render_login()
