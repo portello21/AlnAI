@@ -23,8 +23,8 @@ MEMORY_FILE = "long_term_memory.json"
 PASSWORDS = {
     "Allan": st.secrets.get("ALLAN_PASSWORD", "Allan2026@Pass"),
     "Beatriz": st.secrets.get("BEATRIZ_PASSWORD", "Beatriz2026@Pass"),
-    "Irmao_1": st.secrets.get("IRMAO1_PASSWORD", "Irmao1@Pass"),
-    "Irmao_2": st.secrets.get("IRMAO2_PASSWORD", "Irmao2@Pass")
+    "Natan": st.secrets.get("NATAN_PASSWORD", "Natan@Pass"),
+    "Tainan": st.secrets.get("TAINAN_PASSWORD", "Tainan@Pass")
 }
 
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
@@ -72,7 +72,7 @@ if not st.session_state.authenticated:
         <div class="rog-login-divider"></div>
     </div>
     """, unsafe_allow_html=True)
-    profile_choice = st.selectbox("Perfil", ["Allan", "Beatriz", "Irmao_1", "Irmao_2"])
+    profile_choice = st.selectbox("Perfil", ["Allan", "Beatriz", "Natan", "Tainan"])
     input_pass = st.text_input("Senha", type="password")
     lembrar_me = st.checkbox("Lembrar de mim (30 dias)")
     if st.button("Entrar", use_container_width=True, type="primary"):
@@ -90,8 +90,8 @@ if not st.session_state.authenticated:
 PROFILES = {
     "Allan": ["IDENTIDADE: Allan Vitor Portello, 26 anos (21/04/2000). Altura: 1.90m, Peso: ~118.9kg.", "FAMÍLIA: Casado com Beatriz (agronomia/A&W).", "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026).", "TRABALHO: Setor de limpeza no Canadá com colega Serdar. Sem diploma.", "METAS: Plano de CAD 5.000 (faculdade Beatriz) para set/2026. Troca do Mazda 3 (2012).", "TECH & GAMES: Joga CS2 competitivo. Monta PCs de alta performance.", "FITNESS: Musculação na Crunch Fitness. Dieta hiperproteica.", "ESTILO: Racional, lógico, sem clichês. Respostas densas e objetivas.", "MOEDA: Dólar Canadense (CAD)."],
     "Beatriz": ["IDENTIDADE: Beatriz. Casada com Allan Vitor Portello.", "ESTUDOS E TRABALHO: Formada em agronomia, gestão de negócios. Trabalha na A&W.", "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026).", "METAS FINANCEIRAS: Parcelamento universitário de CAD 5.000 para set/2026.", "FITNESS: Treino e dieta alinhados à rotina.", "MOEDA: Dólar Canadense (CAD)."],
-    "Irmao_1": ["IDENTIDADE: Usuário Irmão 1.", "DIRETRIZES: Acesso total às engines de otimização técnica, financeira e linguística da ROG AI."],
-    "Irmao_2": ["IDENTIDADE: Usuário Irmão 2.", "DIRETRIZES: Acesso total às engines de otimização técnica, financeira e linguística da ROG AI."]
+    "Natan": ["IDENTIDADE: Usuário Natan (Irmão de Allan).", "DIRETRIZES: Acesso total às engines de otimização técnica, financeira e linguística da ROG AI."],
+    "Tainan": ["IDENTIDADE: Usuário Tainan (Irmão de Allan).", "DIRETRIZES: Acesso total às engines de otimização técnica, financeira e linguística da ROG AI."]
 }
 
 def load_long_term_memory() -> dict:
