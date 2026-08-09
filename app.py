@@ -23,7 +23,6 @@ AGENTS = {
         "short_name": "Auto",
         "description": "Coordena os agentes e decide como executar cada tarefa.",
         "language": "pt-BR",
-        "color": "#00a884",
         "system_prompt": """Você é o Orquestrador central do Allan AI. Moeda padrão: Dólar Canadense (CAD / $). Cidade: Hamilton, Ontario. Compreenda a solicitação do usuário e decida a melhor forma de atendê-la com clareza e objetividade."""
     },
     "personal": {
@@ -32,7 +31,6 @@ AGENTS = {
         "short_name": "Personal",
         "description": "Organização pessoal, planejamento, produtividade e rotina.",
         "language": "pt-BR",
-        "color": "#00a884",
         "system_prompt": """Você é o Personal Agent do Allan AI. Especialista em gestão de tempo, produtividade e organização pessoal em Hamilton/Ontario."""
     },
     "finance": {
@@ -41,7 +39,6 @@ AGENTS = {
         "short_name": "Finance",
         "description": "Finanças pessoais, orçamento e análise em CAD $.",
         "language": "pt-BR",
-        "color": "#00a884",
         "system_prompt": """Você é o Finance Agent do Allan AI. Mantenha todas as análises estritamente em Dólar Canadense (CAD / $). Estrutura: Tabela de Lançamentos | Totais | Saldo Final Líquido."""
     },
     "tech": {
@@ -50,7 +47,6 @@ AGENTS = {
         "short_name": "Tech",
         "description": "Python, APIs, Docker, IA e engenharia de software.",
         "language": "pt-BR",
-        "color": "#00a884",
         "system_prompt": """Você é o Tech Agent do Allan AI. Entregue códigos limpos em PowerShell, automações e comandos Docker prontos para uso."""
     },
     "coach": {
@@ -59,7 +55,6 @@ AGENTS = {
         "short_name": "Coach",
         "description": "Metas, hábitos, disciplina e acompanhamento de progresso.",
         "language": "pt-BR",
-        "color": "#00a884",
         "system_prompt": """Você é o Coach Agent do Allan AI. Prescreva planos de treino focados em hipertrofia (RIR/RPE) e dietas de alta proteína em g/kg."""
     },
     "business": {
@@ -68,7 +63,6 @@ AGENTS = {
         "short_name": "Business",
         "description": "Negócios, estratégia, produtos e análise em CAD $.",
         "language": "pt-BR",
-        "color": "#00a884",
         "system_prompt": """Você é o Business Agent do Allan AI. Calcule taxa por hora, custos operacionais e margens de lucro para serviços comerciais em Dólar Canadense (CAD / $)."""
     },
     "english": {
@@ -77,7 +71,6 @@ AGENTS = {
         "short_name": "English",
         "description": "Conversação, gramática, vocabulário e pronúncia.",
         "language": "en-US",
-        "color": "#00a884",
         "system_prompt": """You are the English Teacher agent of Allan AI. Traduza mantendo o contexto canadense natural, corrija erros gramaticais e ofereça explicações simples."""
     },
 }
@@ -178,49 +171,53 @@ VOICE_CSS = ""
 VOICE_JS = r"""
 export default function(component) {
     const { parentElement, setTriggerValue, data } = component;
+    if (!parentElement) return;
+
     const button = parentElement.querySelector("#voiceButton");
     const status = parentElement.querySelector("#voiceStatus");
     const transcript = parentElement.querySelector("#voiceTranscript");
 
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-        status.textContent = "Microfone não suportado no navegador.";
-        return;
+    if (button) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SpeechRecognition) {
+            if (status) status.textContent = "Microfone não suportado no navegador.";
+        } else {
+            const recognition = new SpeechRecognition();
+            recognition.lang = data?.input_lang || "pt-BR";
+            recognition.continuous = false;
+
+            button.onclick = () => {
+                try {
+                    recognition.lang = data?.input_lang || "pt-BR";
+                    recognition.start();
+                    if (status) status.textContent = "Ouvindo...";
+                    button.style.background = "#005c4b";
+                } catch (e) {
+                    recognition.stop();
+                }
+            };
+
+            recognition.onresult = (e) => {
+                const text = e.results[0][0].transcript;
+                if (transcript) transcript.textContent = text;
+                setTriggerValue("voice_message", text);
+            };
+
+            recognition.onend = () => {
+                if (status) status.textContent = "Clique no microfone para falar";
+                button.style.background = "#202c33";
+            };
+        }
     }
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = data?.input_lang || "pt-BR";
-    recognition.continuous = false;
-
-    button.onclick = () => {
-        try {
-            recognition.lang = data?.input_lang || "pt-BR";
-            recognition.start();
-            status.textContent = "Ouvindo...";
-            button.style.background = "#005c4b";
-        } catch (e) {
-            recognition.stop();
-        }
-    };
-
-    recognition.onresult = (e) => {
-        const text = e.results[0][0].transcript;
-        transcript.textContent = text;
-        setTriggerValue("voice_message", text);
-    };
-
-    recognition.onend = () => {
-        status.textContent = "Clique no microfone para falar";
-        button.style.background = "#202c33";
-    };
-
-    // Text to Speech Output
+    // Text to Speech Output seguro sem dependencia de dataset
     const speechText = data?.speech_text ?? "";
     const speechId = data?.speech_id ?? 0;
-    const lastId = parentElement.dataset.lastSpeechId || "0";
+    
+    if (!window.__lastSpeechId) window.__lastSpeechId = 0;
 
-    if (speechText && String(speechId) !== String(lastId)) {
-        parentElement.dataset.lastSpeechId = String(speechId);
+    if (speechText && speechId !== window.__lastSpeechId) {
+        window.__lastSpeechId = speechId;
         if ("speechSynthesis" in window) {
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(speechText);
