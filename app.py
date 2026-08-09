@@ -37,14 +37,11 @@ def init_supabase() -> Client | None:
     return None
 
 supabase = init_supabase()
-
-# Instanciação direta sem cache para evitar violação de estado do Streamlit
 cookie_manager = stx.CookieManager(key="rog_cookies")
 
 if "authenticated" not in st.session_state: st.session_state.authenticated = False
 if "current_profile" not in st.session_state: st.session_state.current_profile = None
 
-# Verificação de Token de Acesso (Cookie)
 cookie_profile = cookie_manager.get(cookie="rog_ai_profile")
 if cookie_profile in PASSWORDS and not st.session_state.authenticated:
     st.session_state.authenticated = True
@@ -52,13 +49,32 @@ if cookie_profile in PASSWORDS and not st.session_state.authenticated:
     st.rerun()
 
 if not st.session_state.authenticated:
-    st.markdown("<style>.stApp { background-color: #0b141a !important; color: #e9edef !important; } .login-box { max-width: 400px; margin: 100px auto; padding: 30px; background: #202c33; border-radius: 12px; border: 1px solid #2a3942; text-align: center; }</style>", unsafe_allow_html=True)
-    st.markdown("<div class='login-box'>", unsafe_allow_html=True)
-    st.title("🔒 ROG AI")
+    st.markdown("""
+    <style>
+    .stApp { background: radial-gradient(circle at 50% 10%, rgba(0,168,132,.10), transparent 30%), linear-gradient(180deg,#070b0e,#0b141a) !important; color:#e9edef !important; }
+    [data-testid="stHeader"] { background:transparent !important; }
+    .main .block-container { max-width:430px; min-height:78vh; padding:52px 34px 30px; background:linear-gradient(145deg,#121d23,#0c1419); border:1px solid #263840; border-radius:24px; box-shadow:0 25px 80px rgba(0,0,0,.45),inset 0 1px 0 rgba(255,255,255,.02); }
+    .rog-login-shell { padding:4px 0 20px; text-align:center; }
+    .rog-login-mark { width:68px; height:68px; margin:0 auto 16px; display:flex; align-items:center; justify-content:center; border-radius:19px; background:linear-gradient(145deg,#123d35,#0d211d); border:1px solid rgba(0,168,132,.45); color:#36d9b3; font-size:30px; font-weight:800; }
+    .rog-login-title { color:#eef3f5; font-size:28px; font-weight:760; letter-spacing:-.7px; }
+    .rog-login-subtitle { color:#84939c; font-size:13px; margin:5px 0 22px; }
+    .rog-login-divider { height:1px; background:#263840; margin-bottom:20px; }
+    div[data-testid="stSelectbox"] label, div[data-testid="stTextInput"] label { color:#a9b6bc !important; font-size:12px !important; }
+    div[data-testid="stSelectbox"] > div > div, div[data-testid="stTextInput"] input { background:#0b141a !important; color:#e9edef !important; border:1px solid #2a3942 !important; border-radius:12px !important; }
+    div[data-testid="stTextInput"] input:focus { border-color:#00a884 !important; box-shadow:0 0 0 1px #00a884 !important; }
+    div[data-testid="stCheckbox"] label { color:#8696a0 !important; font-size:12px !important; }
+    .rog-login-footer { color:#596970; font-size:10px; margin-top:18px; letter-spacing:.4px; text-align:center; }
+    </style>
+    <div class="rog-login-shell">
+        <div class="rog-login-mark">R</div>
+        <div class="rog-login-title">ROG AI</div>
+        <div class="rog-login-subtitle">Inteligência multiagente · memória privada · acesso seguro</div>
+        <div class="rog-login-divider"></div>
+    </div>
+    """, unsafe_allow_html=True)
     profile_choice = st.selectbox("Perfil", ["Allan", "Beatriz", "Irmao_1", "Irmao_2"])
     input_pass = st.text_input("Senha", type="password")
     lembrar_me = st.checkbox("Lembrar de mim (30 dias)")
-    
     if st.button("Entrar", use_container_width=True, type="primary"):
         if input_pass == PASSWORDS[profile_choice]:
             st.session_state.authenticated = True
@@ -68,29 +84,12 @@ if not st.session_state.authenticated:
             st.rerun()
         else:
             st.error("Falha de autenticação.")
-    st.markdown("</div>", unsafe_allow_html=True)
+    st.markdown('<div class="rog-login-footer">ROG AI · acesso autenticado</div>', unsafe_allow_html=True)
     st.stop()
 
 PROFILES = {
-    "Allan": [
-        "IDENTIDADE: Allan Vitor Portello, 26 anos (21/04/2000). Altura: 1.90m, Peso: ~118.9kg.",
-        "FAMÍLIA: Casado com Beatriz (agronomia/A&W).",
-        "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026).",
-        "TRABALHO: Setor de limpeza no Canadá com colega Serdar. Sem diploma.",
-        "METAS: Plano de CAD $5.000 (faculdade Beatriz) para set/2026. Troca do Mazda 3 (2012).",
-        "TECH & GAMES: Joga CS2 competitivo. Monta PCs de alta performance.",
-        "FITNESS: Musculação na Crunch Fitness. Dieta hiperproteica.",
-        "ESTILO: Racional, lógico, sem clichês. Respostas densas e objetivas.",
-        "MOEDA: Dólar Canadense (CAD / $)."
-    ],
-    "Beatriz": [
-        "IDENTIDADE: Beatriz. Casada com Allan Vitor Portello.",
-        "ESTUDOS E TRABALHO: Formada em agronomia, gestão de negócios. Trabalha na A&W.",
-        "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026).",
-        "METAS FINANCEIRAS: Parcelamento universitário de CAD $5.000 para set/2026.",
-        "FITNESS: Treino e dieta alinhados à rotina.",
-        "MOEDA: Dólar Canadense (CAD / $)."
-    ],
+    "Allan": ["IDENTIDADE: Allan Vitor Portello, 26 anos (21/04/2000). Altura: 1.90m, Peso: ~118.9kg.", "FAMÍLIA: Casado com Beatriz (agronomia/A&W).", "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026).", "TRABALHO: Setor de limpeza no Canadá com colega Serdar. Sem diploma.", "METAS: Plano de CAD 5.000 (faculdade Beatriz) para set/2026. Troca do Mazda 3 (2012).", "TECH & GAMES: Joga CS2 competitivo. Monta PCs de alta performance.", "FITNESS: Musculação na Crunch Fitness. Dieta hiperproteica.", "ESTILO: Racional, lógico, sem clichês. Respostas densas e objetivas.", "MOEDA: Dólar Canadense (CAD)."],
+    "Beatriz": ["IDENTIDADE: Beatriz. Casada com Allan Vitor Portello.", "ESTUDOS E TRABALHO: Formada em agronomia, gestão de negócios. Trabalha na A&W.", "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026).", "METAS FINANCEIRAS: Parcelamento universitário de CAD 5.000 para set/2026.", "FITNESS: Treino e dieta alinhados à rotina.", "MOEDA: Dólar Canadense (CAD)."],
     "Irmao_1": ["IDENTIDADE: Usuário Irmão 1.", "DIRETRIZES: Acesso total às engines de otimização técnica, financeira e linguística da ROG AI."],
     "Irmao_2": ["IDENTIDADE: Usuário Irmão 2.", "DIRETRIZES: Acesso total às engines de otimização técnica, financeira e linguística da ROG AI."]
 }
@@ -185,22 +184,53 @@ def ask_deepseek(agent_id: str, history: list[dict[str, Any]], user_query: str, 
     content = data["choices"][0]["message"].get("content", "")
     return f"> *Raciocínio lógico executado pelo motor DeepSeek-R1.*\n\n{content}" if reasoning and target_model == "deepseek-reasoner" else content.strip()
 
-st.markdown("""<style>
-:root { --amoled: #0b141a; --sidebar: #111b21; --bubble-ai: #202c33; --bubble-user: #005c4b; --border: #2a3942; --green: #00a884; --text: #e9edef; --muted: #8696a0; }
-.stApp { background: var(--amoled) !important; color: var(--text) !important; }
-[data-testid="stHeader"] { background: transparent !important; }
-.main .block-container { max-width: 1400px; padding-top: 12px; padding-bottom: 120px; }
-[data-testid="stSidebar"] { background: var(--sidebar) !important; border-right: 1px solid var(--border); }
-[data-testid="stSidebar"] button { min-height: 52px; width: 100%; border: 0; background: transparent; color: var(--text); text-align: left; padding: 10px 14px; font-size: 15px; }
-[data-testid="stSidebar"] button:hover { background: #202c33; }
-.chat-header { min-height: 64px; display: flex; align-items: center; gap: 12px; background: var(--bubble-ai); border: 1px solid var(--border); border-radius: 12px; padding: 10px 16px; margin-bottom: 12px; }
-.chat-avatar { width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; background: var(--sidebar); border-radius: 50%; font-size: 22px; }
-.message-user { display: flex; justify-content: flex-end; margin: 8px 0; }
-.message-ai { display: flex; justify-content: flex-start; margin: 8px 0; }
-.bubble-user { max-width: 80%; background: var(--bubble-user); border: 1px solid #008069; border-radius: 10px 3px 10px 10px; padding: 10px 14px; font-size: 14px; }
-.bubble-ai { max-width: 82%; background: var(--bubble-ai); border: 1px solid var(--border); border-radius: 3px 10px 10px 10px; padding: 10px 14px; font-size: 14px; }
-.message-time { color: var(--muted); font-size: 9px; text-align: right; margin-top: 4px; }
-</style>""", unsafe_allow_html=True)
+st.markdown("""
+<style>
+:root { --amoled:#080d10; --sidebar:#0e171c; --sidebar-2:#111c22; --bubble-ai:#172229; --bubble-user:#075e54; --border:#263840; --border-soft:rgba(134,150,160,.14); --green:#00a884; --text:#e9edef; --muted:#8696a0; }
+.stApp { background:radial-gradient(circle at 75% -10%,rgba(0,168,132,.055),transparent 30%),linear-gradient(180deg,#080d10 0%,#0b141a 100%) !important; color:var(--text) !important; }
+[data-testid="stHeader"] { background:transparent !important; }
+[data-testid="stAppViewContainer"] { background:transparent !important; }
+.main .block-container { max-width:1480px; padding:10px 18px 105px; }
+[data-testid="stSidebar"] { background:linear-gradient(180deg,#0e171c 0%,#0b141a 100%) !important; border-right:1px solid var(--border) !important; }
+[data-testid="stSidebar"] > div:first-child { padding-top:12px; }
+[data-testid="stSidebar"] .stButton { margin:2px 0 !important; }
+[data-testid="stSidebar"] .stButton > button { min-height:58px !important; border:1px solid transparent !important; border-left:3px solid transparent !important; border-radius:11px !important; background:transparent !important; color:var(--text) !important; text-align:left !important; padding:8px 12px !important; font-size:14px !important; font-weight:550 !important; box-shadow:none !important; transition:background .16s ease,border-color .16s ease,transform .16s ease; }
+[data-testid="stSidebar"] .stButton > button:hover { background:#17232a !important; border-color:var(--border-soft) !important; border-left-color:#00a884 !important; transform:translateX(1px); }
+[data-testid="stSidebar"] .stButton > button[kind="primary"] { background:linear-gradient(90deg,rgba(0,168,132,.16),rgba(0,168,132,.06)) !important; border-color:rgba(0,168,132,.18) !important; border-left-color:var(--green) !important; }
+[data-testid="stSidebar"] hr { border-color:var(--border) !important; margin:16px 0 !important; }
+.rog-sidebar-head { padding:8px 4px 18px; }
+.rog-brand-row { display:flex; align-items:center; gap:10px; }
+.rog-brand-mark { width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; background:linear-gradient(145deg,#123c34,#10241f); border:1px solid rgba(0,168,132,.34); color:#32d5b0; font-weight:800; }
+.rog-brand-title { color:var(--text); font-size:20px; font-weight:760; letter-spacing:-.4px; }
+.rog-brand-subtitle { color:var(--muted); font-size:11px; margin-top:2px; }
+.rog-profile-chip { display:inline-flex; align-items:center; gap:6px; margin-top:13px; padding:5px 9px; border:1px solid var(--border); border-radius:999px; color:#9eabb1; background:#0b141a; font-size:10px; }
+.rog-section-label { color:#5f7078; font-size:9px; font-weight:800; letter-spacing:1.4px; margin:0 4px 5px; }
+.chat-header { min-height:70px; display:flex; align-items:center; gap:13px; background:rgba(17,28,34,.92); border:1px solid var(--border); border-radius:15px; padding:10px 16px; margin-bottom:13px; box-shadow:0 8px 28px rgba(0,0,0,.16),inset 0 1px 0 rgba(255,255,255,.02); backdrop-filter:blur(10px); }
+.chat-avatar { width:46px; height:46px; flex:0 0 46px; display:flex; align-items:center; justify-content:center; background:linear-gradient(145deg,#1a2a31,#0d171c); border:1px solid #344750; border-radius:14px; font-size:23px; }
+.chat-agent-name { color:var(--text); font-size:16px; font-weight:700; letter-spacing:-.2px; }
+.chat-agent-description { color:var(--muted); font-size:11px; margin-top:3px; }
+.chat-header::after { content:'● ONLINE'; margin-left:auto; color:#00a884; font-size:9px; letter-spacing:.9px; font-weight:800; opacity:.9; }
+.chat-history { padding:6px 3.5% 32px; }
+.message-user,.message-ai { display:flex; width:100%; margin:7px 0; }
+.message-user { justify-content:flex-end; }
+.message-ai { justify-content:flex-start; }
+.bubble-user,.bubble-ai { position:relative; line-height:1.55; font-size:14px; box-shadow:0 2px 7px rgba(0,0,0,.18); }
+.bubble-user { max-width:min(760px,80%); background:linear-gradient(145deg,#075e54,#075449); border:1px solid #0a806f; border-radius:14px 4px 14px 14px; padding:10px 13px 7px; }
+.bubble-ai { max-width:min(820px,84%); background:linear-gradient(145deg,#172229,#152027); border:1px solid var(--border); border-radius:4px 14px 14px 14px; padding:10px 14px 7px; }
+.bubble-ai > div:first-child { color:#35cfae !important; font-size:10px !important; font-weight:800 !important; letter-spacing:.2px; margin-bottom:7px; }
+.message-time { color:rgba(233,237,239,.48); font-size:9px; text-align:right; margin-top:5px; }
+.bubble-ai pre,.bubble-user pre { background:#0b141a; border:1px solid #263840; border-radius:9px; padding:12px; overflow-x:auto; margin:9px 0 4px; }
+.bubble-ai code,.bubble-user code { font-family:ui-monospace,SFMono-Regular,Consolas,monospace; font-size:12px; }
+.bubble-ai table,.bubble-user table { width:100%; border-collapse:collapse; margin:9px 0; font-size:12px; }
+.bubble-ai th,.bubble-ai td,.bubble-user th,.bubble-user td { border:1px solid #304149; padding:6px 8px; }
+.bubble-ai th,.bubble-user th { background:#0f1a20; color:#b9c5ca; }
+.composer-root { position:relative; }
+.composer-bar { box-shadow:0 12px 35px rgba(0,0,0,.38) !important; backdrop-filter:blur(14px); }
+[data-testid="stDownloadButton"] button { background:#111c22 !important; border:1px solid #263840 !important; color:#9eabb1 !important; border-radius:9px !important; font-size:11px !important; min-height:32px !important; }
+[data-testid="stDownloadButton"] button:hover { border-color:#00a884 !important; color:#e9edef !important; }
+@media (max-width:900px) { .main .block-container { padding:8px 8px 95px; } .chat-history { padding-left:1%; padding-right:1%; } .bubble-user { max-width:90%; } .bubble-ai { max-width:94%; } .chat-header::after { display:none; } }
+</style>
+""", unsafe_allow_html=True)
 
 COMPOSER_HTML = """
 <div class="composer-root">
@@ -277,13 +307,25 @@ export default function(component) {
 composer_component = components.component(name="rog_ai_composer", html=COMPOSER_HTML, css=COMPOSER_CSS, js=COMPOSER_JS)
 
 with st.sidebar:
-    st.markdown(f'<div style="font-size:20px; font-weight:bold; color:#e9edef; padding:8px 0;">ROG AI</div><div style="font-size:11px; color:#8696a0; margin-bottom:12px;">Logado: <b>{current_profile}</b></div>', unsafe_allow_html=True)
+    st.markdown(f"""
+        <div class="rog-sidebar-head">
+            <div class="rog-brand-row">
+                <div class="rog-brand-mark">R</div>
+                <div>
+                    <div class="rog-brand-title">ROG AI</div>
+                    <div class="rog-brand-subtitle">Multiagent Intelligence</div>
+                </div>
+            </div>
+            <div class="rog-profile-chip">● {current_profile} · sessão ativa</div>
+        </div>
+        <div class="rog-section-label">AGENTES ESPECIALISTAS</div>
+    """, unsafe_allow_html=True)
     for a_id, a_data in AGENTS.items():
         sel = (st.session_state.current_agent == a_id)
-        if st.button(f"{a_data['icon']} {a_data['name']}", key=f"agent_{a_id}", use_container_width=True, type="primary" if sel else "secondary"):
+        if st.button(f"{a_data['icon']}  {a_data['name']}", key=f"agent_{a_id}", use_container_width=True, type="primary" if sel else "secondary"):
             if not sel: st.session_state.current_agent = a_id; st.rerun()
-    st.markdown("---")
-    if st.button("🔒 Sair", use_container_width=True): 
+    st.markdown('<div class="rog-section-label" style="margin-top:18px;">CONTA</div>', unsafe_allow_html=True)
+    if st.button("↪  Sair da sessão", use_container_width=True):
         cookie_manager.delete("rog_ai_profile")
         st.session_state.authenticated = False
         st.session_state.current_profile = None
@@ -291,17 +333,40 @@ with st.sidebar:
 
 agent_id = st.session_state.current_agent
 agent = AGENTS[agent_id]
-st.markdown(f'<div class="chat-header"><div class="chat-avatar">{agent["icon"]}</div><div><div style="font-size:16px;font-weight:bold;color:#e9edef;">{agent["name"]}</div><div style="font-size:12px;color:#8696a0;">{agent["description"]}</div></div></div>', unsafe_allow_html=True)
+st.markdown(f"""
+<div class="chat-header">
+    <div class="chat-avatar">{agent["icon"]}</div>
+    <div>
+        <div class="chat-agent-name">{html.escape(agent["name"])}</div>
+        <div class="chat-agent-description">{html.escape(agent["description"])}</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
 
 history = st.session_state.conversations.get(agent_id, [])
 st.markdown('<div class="chat-history">', unsafe_allow_html=True)
 for msg in history:
     if msg["role"] == "user":
-        st.markdown(f'<div class="message-user"><div class="bubble-user">{html.escape(msg["content"])}<div class="message-time">{msg.get("time", "")}</div></div></div>', unsafe_allow_html=True)
+        st.markdown(f"""
+<div class="message-user">
+    <div class="bubble-user">
+        {html.escape(msg["content"])}
+        <div class="message-time">{html.escape(msg.get("time", ""))}</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
     else:
         content_html = re.sub(r"`(.*?)`", r"<pre><code>\1</code></pre>", html.escape(msg["content"]), flags=re.S).replace("\n", "<br>")
         lbl = msg.get("agent", {}).get("name", "ROG AI")
-        st.markdown(f'<div class="message-ai"><div class="bubble-ai"><div style="color:#00a884;font-size:11px;font-weight:bold;">{msg.get("agent", {}).get("icon", "🤖")} {lbl}</div>{content_html}<div class="message-time">{msg.get("time", "")}</div></div></div>', unsafe_allow_html=True)
+        st.markdown(f"""
+<div class="message-ai">
+    <div class="bubble-ai">
+        <div>{msg.get("agent", {}).get("icon", "🤖")} {html.escape(lbl)}</div>
+        {content_html}
+        <div class="message-time">{html.escape(msg.get("time", ""))}</div>
+    </div>
+</div>
+""", unsafe_allow_html=True)
         if "|" in msg["content"] and "\n|" in msg["content"]:
             csv_data = "\n".join([line.replace("|", ",").strip().strip(",") for line in msg["content"].split("\n") if "|" in line])
             st.download_button(label="📥 Baixar Tabela (CSV)", data=csv_data.encode('utf-8'), file_name=f"Data_{int(time.time())}.csv", mime="text/csv", key=f"dl_{msg.get('time')}_{hash(msg['content'][:10])}")
