@@ -14,7 +14,7 @@ import streamlit.components.v2 as components
 # ============================================================
 
 st.set_page_config(
-    page_title="Allan AI - Core",
+    page_title="Allan AI - Multi-Profile",
     page_icon="🔒",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -22,10 +22,17 @@ st.set_page_config(
 
 DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 MEMORY_FILE = "long_term_memory.json"
-APP_PASSWORD = st.secrets.get("APP_PASSWORD", "Allan2026@Pass")
+
+# Senhas individuais
+PASSWORDS = {
+    "Allan": st.secrets.get("ALLAN_PASSWORD", "Allan2026@Pass"),
+    "Beatriz": st.secrets.get("BEATRIZ_PASSWORD", "Beatriz2026@Pass")
+}
 
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
+if "current_profile" not in st.session_state:
+    st.session_state.current_profile = None
 
 # ============================================================
 # LOGIN
@@ -41,12 +48,15 @@ if not st.session_state.authenticated:
     
     st.markdown("<div class='login-box'>", unsafe_allow_html=True)
     st.title("🔒 Allan AI")
-    st.caption("Acesso Restrito ao Proprietário")
+    st.caption("Selecione seu perfil de acesso")
     
-    input_pass = st.text_input("Senha de Acesso", type="password", key="login_input")
-    if st.button("Entrar no Sistema", use_container_width=True, type="primary"):
-        if input_pass == APP_PASSWORD:
+    profile_choice = st.selectbox("Perfil", ["Allan", "Beatriz"])
+    input_pass = st.text_input("Senha", type="password", key="login_input")
+    
+    if st.button("Entrar", use_container_width=True, type="primary"):
+        if input_pass == PASSWORDS[profile_choice]:
             st.session_state.authenticated = True
+            st.session_state.current_profile = profile_choice
             st.rerun()
         else:
             st.error("Senha incorreta.")
@@ -55,33 +65,52 @@ if not st.session_state.authenticated:
     st.stop()
 
 # ============================================================
-# BASE DE DADOS MACIÇA DE LONGO PRAZO PRÉ-CARREGADA
+# PERFIS DE MEMÓRIA MACIÇA PRÉ-CARREGADOS
 # ============================================================
 
-DEFAULT_PROFILE = [
-    "IDENTIDADE: Allan Vitor Portello, 26 anos (Nascido em 21/04/2000). Altura: 1.90m, Peso: ~118.9kg.",
-    "FAMÍLIA: Casado com Beatriz. Ela é formada em agronomia, cursa gestão de negócios e trabalha na A&W.",
-    "LOCALIZAÇÃO E MORADIA: Atualmente em Hamilton, Ontario, porém concluindo o contrato de aluguel atual (setembro/2026) e em processo de mudança para Brantford.",
-    "TRABALHO: Atua no setor de limpeza no Canadá e trabalha com o colega Serdar. O Allan não possui diploma universitário.",
-    "METAS FINANCEIRAS E ESTUDOS: Planejando a estruturação de um plano de pagamento para a parcela de CAD .000 da universidade da Beatriz com vencimento para setembro/2026.",
-    "VEÍCULO: Proprietário de um Mazda 3 (ano 2012). Objetivo de curto prazo: comprar um carro mais novo utilizando o Mazda 3 como entrada na negociação. Mantém o carro de forma rigorosa com polimentos e cuidados.",
-    "GAMING & TECH: Joga FPS competitivo (Counter-Strike 2, Warzone) e tem profundo interesse na economia e valores do mercado de skins do CS2. Adora projetar, montar e otimizar computadores de alta performance e ajustar periféricos.",
-    "FITNESS & DIETA: Pratica musculação focada em hipertrofia na Crunch Fitness. Mantém uma dieta pragmática hiperproteica baseada em peito de frango, carne moída magra e ovos.",
-    "ESTILO DE COMUNICAÇÃO: Responda de forma extremamente lógica, racional e com foco em dados. Elimine clichês corporativos, introduções vazias e conclusões óbvias. Maximize a densidade da informação.",
-    "MOEDA E REFERÊNCIA: Todas as análises financeiras e precificações devem ser em Dólar Canadense (CAD / $)."
-]
+PROFILES = {
+    "Allan": [
+        "IDENTIDADE: Allan Vitor Portello, 26 anos (21/04/2000). Altura: 1.90m, Peso: ~118.9kg.",
+        "FAMÍLIA: Casado com Beatriz (agronomia/A&W).",
+        "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026).",
+        "TRABALHO: Setor de limpeza no Canadá com colega Serdar. Sem diploma universitário.",
+        "METAS: Plano de CAD .000 (faculdade da Beatriz) para set/2026. Troca do Mazda 3 (2012) por carro novo.",
+        "TECH & GAMES: Joga CS2 competitivo, avalia skins. Otimiza/monta PCs de alta performance.",
+        "FITNESS: Musculação (hipertrofia/RIR) na Crunch Fitness. Dieta hiperproteica (frango, carne magra moída, ovos).",
+        "ESTILO: Racional, lógico, sem clichês. Respostas densas e objetivas.",
+        "MOEDA: Dólar Canadense (CAD / $)."
+    ],
+    "Beatriz": [
+        "IDENTIDADE: Beatriz. Casada com Allan Vitor Portello.",
+        "ESTUDOS E TRABALHO: Formada em agronomia, estudante de gestão de negócios. Trabalha na A&W.",
+        "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026 com o Allan).",
+        "METAS FINANCEIRAS: Organizar parcelamento universitário de CAD .000 para setembro/2026 (planejamento conjunto com Allan).",
+        "FITNESS & DIETA: Busca suporte de treino e dieta alinhados ao seu perfil e rotina de estudos/trabalho.",
+        "ESTILO: Respostas práticas, encorajadoras e focadas em organização pessoal e financeira.",
+        "MOEDA: Dólar Canadense (CAD / $)."
+    ]
+}
 
 def load_long_term_memory() -> dict:
-    memory_data = {"user_facts": DEFAULT_PROFILE.copy(), "history": {}}
+    base = {
+        "Allan": {"user_facts": PROFILES["Allan"].copy(), "history": {}},
+        "Beatriz": {"user_facts": PROFILES["Beatriz"].copy(), "history": {}}
+    }
     if os.path.exists(MEMORY_FILE):
         try:
             with open(MEMORY_FILE, "r", encoding="utf-8") as f:
                 saved = json.load(f)
-                facts = list(set(DEFAULT_PROFILE + saved.get("user_facts", [])))
-                return {"user_facts": facts, "history": saved.get("history", {})}
+            # Migração da V1 (somente Allan) para V2 (Multi-Profile)
+            if "user_facts" in saved and "history" in saved:
+                base["Allan"]["history"] = saved["history"]
+            else:
+                for p in ["Allan", "Beatriz"]:
+                    if p in saved:
+                        base[p]["history"] = saved[p].get("history", {})
+                        base[p]["user_facts"] = list(set(PROFILES[p] + saved[p].get("user_facts", [])))
         except Exception:
             pass
-    return memory_data
+    return base
 
 def save_long_term_memory(memory_data: dict) -> None:
     try:
@@ -94,7 +123,7 @@ if "long_memory" not in st.session_state:
     st.session_state.long_memory = load_long_term_memory()
 
 # ============================================================
-# AGENTES E ESTRUTURA
+# AGENTES
 # ============================================================
 
 AGENTS = {
@@ -103,64 +132,64 @@ AGENTS = {
         "icon": "🤖",
         "description": "Assistente central. Inteligência e triagem automatizada.",
         "language": "pt-BR",
-        "system_prompt": "Você é o Allan AI Core. Acesso completo ao perfil do Allan. Responda com objetividade máxima e precisão técnica. Encaminhe demandas específicas."
+        "system_prompt": "Você é o Allan AI Core. Responda com objetividade máxima e precisão técnica."
     },
     "personal": {
         "name": "Personal Agent",
         "icon": "👤",
         "description": "Gestão de tempo, rotina diária e organização pessoal.",
         "language": "pt-BR",
-        "system_prompt": "Você é o Personal Agent do Allan AI. Auxilie na mudança para Brantford, escalas de trabalho com Serdar e organização geral."
+        "system_prompt": "Você é o Personal Agent do sistema. Auxilie na rotina, mudança para Brantford e gestão de tempo."
     },
     "finance": {
         "name": "Finance Agent",
         "icon": "💰",
         "description": "Análise financeira, orçamento e extratos em CAD ($).",
         "language": "pt-BR",
-        "system_prompt": "Você é o Finance Agent do Allan AI. Foco no plano de CAD  da universidade da Beatriz e projeções para o trade-in do Mazda 3 2012."
+        "system_prompt": "Você é o Finance Agent. Foco em planejamento financeiro, orçamento universitário e precificações automotivas. Use CAD ($)."
     },
     "tech": {
         "name": "Tech Agent",
         "icon": "💻",
         "description": "Engenharia de software, PowerShell, Docker e Hardware.",
         "language": "pt-BR",
-        "system_prompt": "Você é o Tech Agent do Allan AI. Entregue soluções exatas para programação, montagem de PCs, otimização de hardware e setups para CS2."
+        "system_prompt": "Você é o Tech Agent. Forneça scripts em PowerShell, soluções de hardware e otimizações de setup."
     },
     "coach": {
         "name": "Coach Agent",
         "icon": "🏋️",
-        "description": "Treinos para hipertrofia e acompanhamento nutricional.",
+        "description": "Treinos e acompanhamento nutricional.",
         "language": "pt-BR",
-        "system_prompt": "Você é o Coach Agent do Allan AI. Prescreva planos de treino hipertróficos (Crunch Fitness) e controle a dieta proteica baseada em carne moída, frango e ovos."
+        "system_prompt": "Você é o Coach Agent. Prescreva treinos e dietas baseados nas metas do perfil logado."
     },
     "business": {
         "name": "Business Agent",
         "icon": "💼",
         "description": "Estratégia comercial, precificação e mercado.",
         "language": "pt-BR",
-        "system_prompt": "Você é o Business Agent do Allan AI. Analise a economia de itens de jogos (Skins CS2) e projetos de negócios em CAD ($)."
+        "system_prompt": "Você é o Business Agent. Analise negócios, carreiras e transações comerciais em CAD ($)."
     },
     "english": {
         "name": "English Teacher",
         "icon": "🇺🇸",
         "description": "Professor de inglês: tradução, correções e pronúncia.",
         "language": "en-US",
-        "system_prompt": "You are the English Teacher agent of Allan AI. Help Allan improve English using natural Canadian context (Ontario)."
+        "system_prompt": "You are the English Teacher agent. Help improve English using natural Canadian context (Ontario)."
     },
 }
+
+current_profile = st.session_state.current_profile
 
 if "current_agent" not in st.session_state:
     st.session_state.current_agent = "orchestrator"
 
-if "conversations" not in st.session_state:
-    st.session_state.conversations = st.session_state.long_memory.get("history", {agent_id: [] for agent_id in AGENTS})
+# Carrega o histórico dinamicamente baseado no perfil logado
+st.session_state.conversations = st.session_state.long_memory[current_profile].get("history", {a_id: [] for a_id in AGENTS})
 
 if "speech_text" not in st.session_state:
     st.session_state.speech_text = ""
-
 if "speech_id" not in st.session_state:
     st.session_state.speech_id = 0
-
 if "last_voice_message" not in st.session_state:
     st.session_state.last_voice_message = ""
 
@@ -210,7 +239,7 @@ def add_message(agent_id: str, role: str, content: str, agent: dict[str, Any] | 
     if agent_id not in st.session_state.conversations:
         st.session_state.conversations[agent_id] = []
     st.session_state.conversations[agent_id].append({"role": role, "content": content, "time": now_time(), "agent": agent})
-    st.session_state.long_memory["history"] = st.session_state.conversations
+    st.session_state.long_memory[current_profile]["history"] = st.session_state.conversations
     save_long_term_memory(st.session_state.long_memory)
 
 def clean_for_speech(text: str) -> str:
@@ -234,8 +263,8 @@ def ask_deepseek(agent_id: str, history: list[dict[str, Any]]) -> str:
     api_key = st.secrets["DEEPSEEK_API_KEY"]
     agent = AGENTS[agent_id]
 
-    memory_facts = "\n- ".join(st.session_state.long_memory.get("user_facts", []))
-    system_content = f"{agent['system_prompt'].strip()}\n\n[MEMÓRIA DE LONGO PRAZO DO USUÁRIO]:\n- {memory_facts}"
+    memory_facts = "\n- ".join(st.session_state.long_memory[current_profile].get("user_facts", []))
+    system_content = f"{agent['system_prompt'].strip()}\n\n[MEMÓRIA DE LONGO PRAZO - PERFIL: {current_profile.upper()}]:\n- {memory_facts}"
 
     messages = [{"role": "system", "content": system_content}]
     for item in history[-30:]:
@@ -347,7 +376,7 @@ export default function(component) {
 composer_component = components.component(name="allan_ai_composer", html=COMPOSER_HTML, css=COMPOSER_CSS, js=COMPOSER_JS)
 
 with st.sidebar:
-    st.markdown('<div style="font-size:20px; font-weight:bold; color:#e9edef; padding:8px 0;">Allan AI</div><div style="font-size:11px; color:#8696a0; margin-bottom:12px;">Conversas ativas</div>', unsafe_allow_html=True)
+    st.markdown(f'<div style="font-size:20px; font-weight:bold; color:#e9edef; padding:8px 0;">Allan AI</div><div style="font-size:11px; color:#8696a0; margin-bottom:12px;">Logado como: <b>{current_profile}</b></div>', unsafe_allow_html=True)
     for a_id, a_data in AGENTS.items():
         sel = (st.session_state.current_agent == a_id)
         lbl = f"{a_data['icon']} {a_data['name']}"
@@ -357,8 +386,9 @@ with st.sidebar:
                 st.rerun()
 
     st.markdown("---")
-    if st.button("🔒 Sair do Sistema", use_container_width=True):
+    if st.button("🔒 Alternar Perfil (Sair)", use_container_width=True):
         st.session_state.authenticated = False
+        st.session_state.current_profile = None
         st.rerun()
 
 agent_id = st.session_state.current_agent
