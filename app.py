@@ -38,11 +38,8 @@ def init_supabase() -> Client | None:
 
 supabase = init_supabase()
 
-@st.cache_resource
-def get_cookie_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_cookie_manager()
+# Instanciação direta sem cache para evitar violação de estado do Streamlit
+cookie_manager = stx.CookieManager(key="rog_cookies")
 
 if "authenticated" not in st.session_state: st.session_state.authenticated = False
 if "current_profile" not in st.session_state: st.session_state.current_profile = None
