@@ -1,207 +1,305 @@
-import streamlit as st
-import requests
-import streamlit.components.v1 as components
+import html
+import re
+import time
+from typing import Any
 
-# Configuração da página
+import requests
+import streamlit as st
+import streamlit.components.v2 as components
+
 st.set_page_config(
     page_title="Allan AI",
-    page_icon="💬",
+    page_icon="🤖",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# Estilização CSS inspirada no Telegram / WhatsApp Dark
-st.markdown("""
-    <style>
-    /* Ocultar elementos padrão */
-    [data-testid="stHeader"], footer, #MainMenu { display: none !important; }
-    
-    /* Fundo escuro AMOLED/OLED */
-    .stApp {
-        background-color: #0b141a !important;
-        color: #e9edef !important;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
-    }
-    
-    /* Container central do chat */
-    .main .block-container {
-        padding-top: 1.2rem !important;
-        padding-bottom: 3rem !important;
-        max-width: 900px !important;
-        margin: 0 auto !important;
-    }
-    
-    /* Barra Lateral - Lista de Agentes */
-    section[data-testid="stSidebar"] {
-        background-color: #111b21 !important;
-        border-right: 1px solid #222d34 !important;
-    }
-    
-    /* Botões da Sidebar estilo Telegram */
-    div[data-testid="stRadio"] div[role="radiogroup"] > label {
-        background-color: #111b21 !important;
-        color: #e9edef !important;
-        border: 1px solid #222d34 !important;
-        border-radius: 10px !important;
-        padding: 10px 14px !important;
-        margin-bottom: 6px !important;
-        transition: all 0.2s ease-in-out !important;
-        cursor: pointer !important;
-    }
-    div[data-testid="stRadio"] div[role="radiogroup"] > label:hover {
-        background-color: #202c33 !important;
-    }
-    div[data-testid="stRadio"] div[role="radiogroup"] > label[data-checked="true"] {
-        background-color: #2a3942 !important;
-        border-color: #00a884 !important;
-        font-weight: 600 !important;
-    }
+DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
 
-    /* Balões de Mensagem */
-    div[data-testid="stChatMessage"] {
-        background-color: #202c33 !important;
-        border-radius: 14px !important;
-        padding: 12px 16px !important;
-        margin-bottom: 12px !important;
-        border: 1px solid #2a3942 !important;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.2) !important;
-    }
-    
-    /* Destaque para mensagem do Usuário */
-    div[data-testid="stChatMessage"]:has(div:contains("🟢")) {
-        background-color: #005c4b !important;
-        border-color: #008069 !important;
-    }
-    
-    /* Caixa de entrada */
-    div[data-testid="stChatInput"] {
-        border-radius: 20px !important;
-    }
-    div[data-testid="stChatInput"] > div {
-        background-color: #202c33 !important;
-        border: 1px solid #2a3942 !important;
-        border-radius: 20px !important;
-    }
-    div[data-testid="stChatInput"] textarea {
-        color: #e9edef !important;
-    }
-    
-    hr { border-color: #222d34 !important; }
-    </style>
-""", unsafe_allow_html=True)
-
-# Definição dos Agentes do Allan AI
 AGENTS = {
-    "🤖 Orquestrador (Auto)": {
-        "desc": "Triagem e roteamento inteligente para toda a malha.",
-        "avatar": "🤖",
-        "system": "Você é o ORQUESTRADOR PRINCIPAL do Allan AI. Moeda padrão: Dólar Canadense (CAD / $). Cidade de referência: Hamilton, Ontario, Canadá. Responda com clareza, objetividade e sem enrolação."
+    "orchestrator": {
+        "icon": "🤖",
+        "name": "Orquestrador",
+        "short_name": "Auto",
+        "description": "Coordena os agentes e decide como executar cada tarefa.",
+        "language": "pt-BR",
+        "color": "#00a884",
+        "system_prompt": """Você é o Orquestrador central do Allan AI. Moeda padrão: Dólar Canadense (CAD / $). Cidade: Hamilton, Ontario. Compreenda a solicitação do usuário e decida a melhor forma de atendê-la com clareza e objetividade."""
     },
-    "👤 Personal Agent": {
-        "desc": "Gestão de tempo, rotina diária e logística pessoal.",
-        "avatar": "👤",
-        "system": "Você é o PERSONAL AGENT do Allan AI. Especialista em gestão de tempo, rotina e organização de compromissos locais em Hamilton/Ontario."
+    "personal": {
+        "icon": "👤",
+        "name": "Personal Agent",
+        "short_name": "Personal",
+        "description": "Organização pessoal, planejamento, produtividade e rotina.",
+        "language": "pt-BR",
+        "color": "#00a884",
+        "system_prompt": """Você é o Personal Agent do Allan AI. Especialista em gestão de tempo, produtividade e organização pessoal em Hamilton/Ontario."""
     },
-    "💰 Finance Agent": {
-        "desc": "Análise contábil, extratos e controle financeiro em CAD ($).",
-        "avatar": "💰",
-        "system": "Você é o FINANCE AGENT do Allan AI. Mantenha todas as análises e saldos estritamente em Dólar Canadense (CAD / $). Estrutura exigida: Tabela de Lançamentos | Totais (Entradas vs Saídas) | Saldo Final Líquido."
+    "finance": {
+        "icon": "💰",
+        "name": "Finance Agent",
+        "short_name": "Finance",
+        "description": "Finanças pessoais, orçamento e análise em CAD $.",
+        "language": "pt-BR",
+        "color": "#00a884",
+        "system_prompt": """Você é o Finance Agent do Allan AI. Mantenha todas as análises estritamente em Dólar Canadense (CAD / $). Estrutura: Tabela de Lançamentos | Totais | Saldo Final Líquido."""
     },
-    "💻 Tech Agent": {
-        "desc": "Scripts PowerShell, Docker CLI e suporte a hardware.",
-        "avatar": "💻",
-        "system": "Você é o TECH AGENT do Allan AI. Entregue soluções técnicas exatas, scripts limpos em PowerShell e comandos Docker operacionais."
+    "tech": {
+        "icon": "💻",
+        "name": "Tech Agent",
+        "short_name": "Tech",
+        "description": "Python, APIs, Docker, IA e engenharia de software.",
+        "language": "pt-BR",
+        "color": "#00a884",
+        "system_prompt": """Você é o Tech Agent do Allan AI. Entregue códigos limpos em PowerShell, automações e comandos Docker prontos para uso."""
     },
-    "🏋️ Coach Agent": {
-        "desc": "Treinos de musculação (hipertrofia) e metas hiperproteicas.",
-        "avatar": "🏋️",
-        "system": "Você é o COACH AGENT do Allan AI. Prescreva planos de treino focados em hipertrofia (com indicação de volume e RIR/RPE) e orientações nutricionais ricas em proteína (g/kg)."
+    "coach": {
+        "icon": "🏋️",
+        "name": "Coach Agent",
+        "short_name": "Coach",
+        "description": "Metas, hábitos, disciplina e acompanhamento de progresso.",
+        "language": "pt-BR",
+        "color": "#00a884",
+        "system_prompt": """Você é o Coach Agent do Allan AI. Prescreva planos de treino focados em hipertrofia (RIR/RPE) e dietas de alta proteína em g/kg."""
     },
-    "💼 Business Agent": {
-        "desc": "Precificação de serviços, margem de lucro e orçamentos em CAD ($).",
-        "avatar": "💼",
-        "system": "Você é o BUSINESS AGENT do Allan AI. Calcule taxa por hora, custos operacionais e margens de lucro para serviços comerciais em Dólar Canadense (CAD / $)."
+    "business": {
+        "icon": "💼",
+        "name": "Business Agent",
+        "short_name": "Business",
+        "description": "Negócios, estratégia, produtos e análise em CAD $.",
+        "language": "pt-BR",
+        "color": "#00a884",
+        "system_prompt": """Você é o Business Agent do Allan AI. Calcule taxa por hora, custos operacionais e margens de lucro para serviços comerciais em Dólar Canadense (CAD / $)."""
     },
-    "🇺🇸 English Teacher": {
-        "desc": "Professor de inglês: tradução contextual, correções e fluência.",
-        "avatar": "🇺🇸",
-        "system": "Você é o ENGLISH AGENT (English Teacher & Translator). Traduza frases mantendo o contexto canadense natural, corrija erros gramaticais e ofereça explicações em português de forma simples."
-    }
+    "english": {
+        "icon": "🇺🇸",
+        "name": "English Teacher",
+        "short_name": "English",
+        "description": "Conversação, gramática, vocabulário e pronúncia.",
+        "language": "en-US",
+        "color": "#00a884",
+        "system_prompt": """You are the English Teacher agent of Allan AI. Traduza mantendo o contexto canadense natural, corrija erros gramaticais e ofereça explicações simples."""
+    },
 }
 
-# Sidebar UI
-st.sidebar.markdown("## 💬 Allan AI")
-st.sidebar.caption("Conversas ativas:")
+st.markdown("""
+<style>
+:root {
+    --bg: #0b141a;
+    --sidebar: #111b21;
+    --panel: #202c33;
+    --panel-hover: #2a3942;
+    --green: #00a884;
+    --user: #005c4b;
+    --user-border: #008069;
+    --text: #e9edef;
+    --muted: #8696a0;
+    --border: #2a3942;
+}
+.stApp, [data-testid="stAppViewContainer"] { background: var(--bg) !important; color: var(--text) !important; }
+[data-testid="stHeader"] { background: transparent !important; }
+.main .block-container { max-width: 1200px; padding-top: 1rem; padding-bottom: 2rem; }
+[data-testid="stSidebar"], [data-testid="stSidebar"] > div:first-child { background: var(--sidebar) !important; }
+.chat-header { display: flex; align-items: center; gap: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 12px 16px; margin-bottom: 12px; }
+.chat-avatar { width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--sidebar); border-radius: 50%; font-size: 22px; }
+.message-user { display: flex; justify-content: flex-end; margin: 8px 0; }
+.message-ai { display: flex; justify-content: flex-start; margin: 8px 0; }
+.bubble-user { max-width: 80%; background: var(--user); border: 1px solid var(--user-border); border-radius: 10px 3px 10px 10px; padding: 10px 14px; color: var(--text); }
+.bubble-ai { max-width: 82%; background: var(--panel); border: 1px solid var(--border); border-radius: 3px 10px 10px 10px; padding: 10px 14px; color: var(--text); }
+.agent-label { color: var(--green); font-size: 11px; font-weight: 700; margin-bottom: 4px; }
+.message-time { color: var(--muted); font-size: 9px; text-align: right; margin-top: 4px; }
+[data-testid="stChatInput"] { background: var(--panel) !important; border: 1px solid var(--border) !important; border-radius: 24px !important; }
+[data-testid="stChatInput"] textarea { color: var(--text) !important; }
+</style>
+""", unsafe_allow_html=True)
 
-selected_agent_name = st.sidebar.radio("Selecione a conversa:", list(AGENTS.keys()), label_visibility="collapsed")
-current_agent = AGENTS[selected_agent_name]
+if "current_agent" not in st.session_state:
+    st.session_state.current_agent = "orchestrator"
 
-if "messages" not in st.session_state:
-    st.session_state.messages = {agent: [] for agent in AGENTS.keys()}
+if "conversations" not in st.session_state:
+    st.session_state.conversations = {agent_id: [] for agent_id in AGENTS}
 
-# Cabeçalho do Chat
-col_avatar, col_info = st.columns([0.1, 0.9])
-with col_avatar:
-    st.title(current_agent["avatar"])
-with col_info:
-    st.markdown(f"### {selected_agent_name}")
-    st.caption(current_agent["desc"])
+if "speech_request_id" not in st.session_state:
+    st.session_state.speech_request_id = 0
 
-st.divider()
+if "speech_text" not in st.session_state:
+    st.session_state.speech_text = ""
 
-# Exibir Mensagens Salvas
-for msg in st.session_state.messages[selected_agent_name]:
-    avatar_icon = "🟢" if msg["role"] == "user" else current_agent["avatar"]
-    with st.chat_message(msg["role"], avatar=avatar_icon):
-        st.write(msg["content"])
+def clean_for_speech(text: str) -> str:
+    text = re.sub(r"`.*?`", " ", text, flags=re.S)
+    text = re.sub(r"([^]*)", r"\1", text)
+    text = re.sub(r"[*_#>-]", " ", text)
+    return text.strip()
 
-# Processar Envio de Mensagens
-if prompt := st.chat_input("Digite sua mensagem..."):
-    st.session_state.messages[selected_agent_name].append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar="🟢"):
-        st.write(prompt)
+def add_message(agent_id: str, role: str, content: str, agent: dict[str, Any] | None = None) -> None:
+    st.session_state.conversations[agent_id].append({
+        "role": role,
+        "content": content,
+        "time": time.strftime("%H:%M"),
+        "agent": agent,
+    })
 
-    with st.chat_message("assistant", avatar=current_agent["avatar"]):
-        with st.spinner("Pensando na nuvem..."):
-            api_key = st.secrets.get("DEEPSEEK_API_KEY", "")
-            if not api_key:
-                response_text = "⚠️ Erro: A chave DEEPSEEK_API_KEY não está configurada nos Secrets do Streamlit Cloud."
-            else:
-                try:
-                    headers = {
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json"
-                    }
-                    payload = {
-                        "model": "deepseek-chat",
-                        "messages": [
-                            {"role": "system", "content": current_agent["system"]},
-                            {"role": "user", "content": prompt}
-                        ]
-                    }
-                    res = requests.post("https://api.deepseek.com/v1/chat/completions", json=payload, headers=headers, timeout=60)
-                    if res.status_code == 200:
-                        response_text = res.json()["choices"][0]["message"]["content"]
-                    else:
-                        response_text = f"Erro na API DeepSeek ({res.status_code}): {res.text}"
-                except Exception as e:
-                    response_text = f"Erro de conexão com o servidor: {e}"
+def get_history(agent_id: str) -> list[dict[str, Any]]:
+    return st.session_state.conversations.get(agent_id, [])
 
-            st.write(response_text)
-            st.session_state.messages[selected_agent_name].append({"role": "assistant", "content": response_text})
+def ask_deepseek(agent_id: str, history: list[dict[str, Any]]) -> str:
+    if "DEEPSEEK_API_KEY" not in st.secrets:
+        raise RuntimeError("DEEPSEEK_API_KEY não foi encontrada nos Secrets do Streamlit Cloud.")
 
-            # Injeção de áudio automático para leitura da resposta em voz alta
-            lang_code = "en-US" if selected_agent_name == "🇺🇸 English Teacher" else "pt-BR"
-            clean_speech = response_text.replace("", "").replace("*", "").replace("#", "")
-            tts_script = f"""
-            <script>
-            if ('speechSynthesis' in window) {{
-                window.speechSynthesis.cancel();
-                var msg = new SpeechSynthesisUtterance({repr(clean_speech)});
-                msg.lang = '{lang_code}';
-                msg.rate = 1.0;
-                window.speechSynthesis.speak(msg);
-            }}
-            </script>
-            """
-            components.html(tts_script, height=0)
+    api_key = st.secrets["DEEPSEEK_API_KEY"]
+    agent = AGENTS[agent_id]
+
+    messages = [{"role": "system", "content": agent["system_prompt"].strip()}]
+    for item in history[-30:]:
+        if item.get("role") in {"user", "assistant"} and item.get("content"):
+            messages.append({"role": item["role"], "content": item["content"]})
+
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    payload = {"model": "deepseek-chat", "messages": messages, "temperature": 0.7}
+
+    response = requests.post(DEEPSEEK_URL, headers=headers, json=payload, timeout=60)
+    data = response.json()
+
+    if not response.ok:
+        raise RuntimeError(f"DeepSeek: {data.get('error', {}).get('message', 'Erro na API')}")
+
+    return data["choices"][0]["message"]["content"].strip()
+
+VOICE_HTML = """
+<div class="voice-wrapper" style="display:flex; align-items:center; gap:10px;">
+    <button id="voiceButton" style="width:40px; height:40px; border-radius:50%; background:#202c33; border:1px solid #2a3942; color:#e9edef; font-size:18px; cursor:pointer;">🎙️</button>
+    <div id="voiceStatus" style="color:#8696a0; font-size:12px;">Clique no microfone para falar</div>
+    <div id="voiceTranscript" style="color:#e9edef; font-size:12px; font-weight:bold;"></div>
+</div>
+"""
+
+VOICE_CSS = ""
+
+VOICE_JS = r"""
+export default function(component) {
+    const { parentElement, setTriggerValue, data } = component;
+    const button = parentElement.querySelector("#voiceButton");
+    const status = parentElement.querySelector("#voiceStatus");
+    const transcript = parentElement.querySelector("#voiceTranscript");
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        status.textContent = "Microfone não suportado no navegador.";
+        return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = data?.input_lang || "pt-BR";
+    recognition.continuous = false;
+
+    button.onclick = () => {
+        try {
+            recognition.lang = data?.input_lang || "pt-BR";
+            recognition.start();
+            status.textContent = "Ouvindo...";
+            button.style.background = "#005c4b";
+        } catch (e) {
+            recognition.stop();
+        }
+    };
+
+    recognition.onresult = (e) => {
+        const text = e.results[0][0].transcript;
+        transcript.textContent = text;
+        setTriggerValue("voice_message", text);
+    };
+
+    recognition.onend = () => {
+        status.textContent = "Clique no microfone para falar";
+        button.style.background = "#202c33";
+    };
+
+    // Text to Speech Output
+    const speechText = data?.speech_text ?? "";
+    const speechId = data?.speech_id ?? 0;
+    const lastId = parentElement.dataset.lastSpeechId || "0";
+
+    if (speechText && String(speechId) !== String(lastId)) {
+        parentElement.dataset.lastSpeechId = String(speechId);
+        if ("speechSynthesis" in window) {
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(speechText);
+            utterance.lang = data?.speech_lang || "pt-BR";
+            window.speechSynthesis.speak(utterance);
+        }
+    }
+}
+"""
+
+voice_component = components.component(
+    name="allan_ai_voice",
+    html=VOICE_HTML,
+    css=VOICE_CSS,
+    js=VOICE_JS,
+)
+
+with st.sidebar:
+    st.markdown("### 💬 Allan AI")
+    st.caption("Conversas ativas:")
+    for a_id, a_data in AGENTS.items():
+        if st.button(f"{a_data['icon']} {a_data['name']}", key=f"btn_{a_id}", use_container_width=True):
+            st.session_state.current_agent = a_id
+            st.rerun()
+
+agent_id = st.session_state.current_agent
+agent = AGENTS[agent_id]
+
+st.markdown(f"""
+    <div class="chat-header">
+        <div class="chat-avatar">{agent['icon']}</div>
+        <div>
+            <div style="font-weight:bold; color:#e9edef;">{agent['name']}</div>
+            <div style="font-size:12px; color:#8696a0;">{agent['description']}</div>
+        </div>
+    </div>
+""", unsafe_allow_html=True)
+
+voice_result = voice_component(
+    data={
+        "input_lang": agent["language"],
+        "speech_text": st.session_state.speech_text,
+        "speech_lang": agent["language"],
+        "speech_id": st.session_state.speech_request_id,
+    },
+    key="voice_comp",
+    height=50,
+)
+
+voice_message = getattr(voice_result, "voice_message", None)
+if voice_message and voice_message != st.session_state.get("last_voice_msg"):
+    st.session_state.last_voice_msg = voice_message
+    add_message(agent_id, "user", voice_message)
+    try:
+        with st.spinner("Pensando..."):
+            ans = ask_deepseek(agent_id, get_history(agent_id))
+        add_message(agent_id, "assistant", ans, agent)
+        st.session_state.speech_text = clean_for_speech(ans)
+        st.session_state.speech_request_id += 1
+    except Exception as err:
+        add_message(agent_id, "assistant", f"**Erro:** {err}", {"icon": "⚠️", "name": "Allan AI"})
+    st.rerun()
+
+history = get_history(agent_id)
+for msg in history:
+    role = msg["role"]
+    if role == "user":
+        st.markdown(f'<div class="message-user"><div class="bubble-user">{html.escape(msg["content"])}<div class="message-time">{msg["time"]}</div></div></div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div class="message-ai"><div class="bubble-ai"><div class="agent-label">{msg.get("agent", {}).get("icon", "🤖")} {msg.get("agent", {}).get("name", "Allan AI")}</div>{html.escape(msg["content"])}<div class="message-time">{msg["time"]}</div></div></div>', unsafe_allow_html=True)
+
+if prompt := st.chat_input(f"Mensagem para {agent['name']}..."):
+    add_message(agent_id, "user", prompt)
+    try:
+        with st.spinner("Pensando..."):
+            ans = ask_deepseek(agent_id, get_history(agent_id))
+        add_message(agent_id, "assistant", ans, agent)
+        st.session_state.speech_text = clean_for_speech(ans)
+        st.session_state.speech_request_id += 1
+    except Exception as err:
+        add_message(agent_id, "assistant", f"**Erro:** {err}", {"icon": "⚠️", "name": "Allan AI"})
+    st.rerun()
