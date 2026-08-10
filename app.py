@@ -7,6 +7,7 @@ import os
 import base64
 import hmac
 import streamlit as st
+import textwrap
 import streamlit.components.v1 as components
 from duckduckgo_search import DDGS
 
@@ -1252,7 +1253,7 @@ with st.sidebar:
     )
 
     st.markdown(
-        """
+        textwrap.dedent("""
         <div class="rog-brand">
             <div class="rog-logo">R</div>
 
@@ -1266,12 +1267,12 @@ with st.sidebar:
                 </div>
             </div>
         </div>
-        """,
+        """),
         unsafe_allow_html=True,
     )
 
     st.markdown(
-        f"""
+        textwrap.dedent(f"""
         <div class="rog-profile">
             <div class="rog-avatar">
                 {profile_initial}
@@ -1288,16 +1289,16 @@ with st.sidebar:
                 </div>
             </div>
         </div>
-        """,
+        """),
         unsafe_allow_html=True,
     )
 
     st.markdown(
-        """
+        textwrap.dedent("""
         <div class="rog-section-label">
             Assistentes
         </div>
-        """,
+        """),
         unsafe_allow_html=True,
     )
 
@@ -1418,7 +1419,7 @@ if not chat_comp:
 # --- Cabecalho do chat ---
 
 st.markdown(
-    f"""
+    textwrap.dedent(f"""
     <div class="rog-topbar">
 
         <div class="rog-agent-info">
@@ -1445,7 +1446,7 @@ st.markdown(
         </div>
 
     </div>
-    """,
+    """),
     unsafe_allow_html=True,
 )
 
@@ -1456,7 +1457,7 @@ if not st.session_state.conversations.get(
 ):
 
     st.markdown(
-        f"""
+        textwrap.dedent(f"""
         <div class="rog-welcome">
 
             <div class="rog-welcome-eyebrow">
@@ -1518,7 +1519,7 @@ if not st.session_state.conversations.get(
             </div>
 
         </div>
-        """,
+        """),
         unsafe_allow_html=True,
     )
 
