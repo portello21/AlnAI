@@ -13,6 +13,12 @@ from duckduckgo_search import DDGS
 from core.config import Config
 from core.database import PersistenceManager
 from core.vector_rag import add_document_to_rag, query_rag
+
+from core.profile_access import (
+    allowed_namespaces,
+    write_namespace,
+)
+
 from core.sandbox import run_code
 from core.reports import generate_markdown_report, generate_csv_report
 from core.attachments import calculate_file_sha256, extract_document_text
@@ -190,11 +196,83 @@ AGENTS = {
     },
 }
 if "current_agent" not in st.session_state: st.session_state.current_agent = "orchestrator"
-if "long_memory" not in st.session_state: st.session_state.long_memory = pm.load_data() if hasattr(pm, "load_data") else {}
+if "memory_by_profile" not in st.session_state:
+    st.session_state.memory_by_profile = {}
+
+_profile_memory = str(
+    st.session_state.current_profile
+    or ""
+).strip().lower()
+
+if _profile_memory not in st.session_state.memory_by_profile:
+
+    all_memory = (
+        pm.load_data()
+        if hasattr(
+            pm,
+            "load_data",
+        )
+        else {}
+    )
+
+    profile_memory = {}
+
+    if isinstance(
+        all_memory,
+        dict,
+    ):
+
+        candidate = all_memory.get(
+            _profile_memory,
+            {},
+        )
+
+        if isinstance(
+            candidate,
+            dict,
+        ):
+            profile_memory = candidate
+
+    st.session_state.memory_by_profile[
+        _profile_memory
+    ] = profile_memory
+
+st.session_state.long_memory = (
+    st.session_state.memory_by_profile[
+        _profile_memory
+    ]
+)
 if "processed_events" not in st.session_state: st.session_state.processed_events = set()
-if "conversations" not in st.session_state: st.session_state.conversations = {k: [] for k in AGENTS}
+if "conversations_by_profile" not in st.session_state:
+    st.session_state.conversations_by_profile = {}
+
+_profile_chat = str(
+    st.session_state.current_profile
+    or ""
+).strip().lower()
+
+if _profile_chat not in st.session_state.conversations_by_profile:
+
+    st.session_state.conversations_by_profile[
+        _profile_chat
+    ] = {
+        key: []
+        for key in AGENTS
+    }
+
+st.session_state.conversations = (
+    st.session_state.conversations_by_profile[
+        _profile_chat
+    ]
+)
 
 current_profile = st.session_state.current_profile
+
+profile_key = str(
+    current_profile
+    or ""
+).strip().lower()
+
 agent_id = st.session_state.current_agent
 agent = AGENTS[agent_id]
 
@@ -630,6 +708,403 @@ header, footer { display: none !important; }
 </style>
 ''', unsafe_allow_html=True)
 
+
+# ============================================================
+# ROG_AST_FAMILY_UI
+# ============================================================
+
+st.markdown("""
+<style>
+
+:root {
+    --rog-bg: #070910;
+    --rog-panel: #0d111a;
+    --rog-panel-hover: #131925;
+    --rog-border: rgba(255,255,255,.07);
+    --rog-text: #eef1f6;
+    --rog-muted: #80899a;
+    --rog-accent: #7557f5;
+    --rog-accent-soft: rgba(117,87,245,.13);
+    --rog-green: #2bd9a4;
+}
+
+
+/* APP */
+
+html,
+body,
+.stApp,
+[data-testid="stAppViewContainer"] {
+
+    background:
+        radial-gradient(
+            circle at 52% -18%,
+            rgba(117,87,245,.12),
+            transparent 36%
+        ),
+        var(--rog-bg)
+        !important;
+
+    color:
+        var(--rog-text)
+        !important;
+}
+
+
+header,
+footer,
+#MainMenu {
+
+    display:
+        none
+        !important;
+}
+
+
+.block-container {
+
+    width:
+        100%
+        !important;
+
+    max-width:
+        1120px
+        !important;
+
+    margin:
+        0 auto
+        !important;
+
+    padding:
+        22px
+        clamp(14px,3vw,30px)
+        135px
+        !important;
+}
+
+
+/* SIDEBAR */
+
+[data-testid="stSidebar"] {
+
+    background:
+        linear-gradient(
+            180deg,
+            #0d111a,
+            #080c12
+        )
+        !important;
+
+    border-right:
+        1px solid
+        var(--rog-border)
+        !important;
+}
+
+
+[data-testid="stSidebar"] > div {
+
+    padding-top:
+        14px
+        !important;
+}
+
+
+[data-testid="stSidebar"] button {
+
+    min-height:
+        44px
+        !important;
+
+    border-radius:
+        11px
+        !important;
+
+    border:
+        1px solid
+        var(--rog-border)
+        !important;
+
+    background:
+        rgba(255,255,255,.025)
+        !important;
+
+    color:
+        #dfe4ec
+        !important;
+
+    font-size:
+        11px
+        !important;
+
+    font-weight:
+        600
+        !important;
+
+    justify-content:
+        flex-start
+        !important;
+
+    text-align:
+        left
+        !important;
+
+    padding:
+        0 13px
+        !important;
+
+    margin-bottom:
+        5px
+        !important;
+
+    transition:
+        all .15s ease
+        !important;
+}
+
+
+[data-testid="stSidebar"] button:hover {
+
+    background:
+        var(--rog-accent-soft)
+        !important;
+
+    border-color:
+        rgba(117,87,245,.32)
+        !important;
+
+    transform:
+        translateX(2px);
+}
+
+
+/* HEADER */
+
+.chat-header-bar {
+
+    padding:
+        13px 16px
+        !important;
+
+    margin-bottom:
+        24px
+        !important;
+
+    border:
+        1px solid
+        var(--rog-border)
+        !important;
+
+    border-radius:
+        14px
+        !important;
+
+    background:
+        linear-gradient(
+            145deg,
+            rgba(18,23,34,.96),
+            rgba(10,14,21,.96)
+        )
+        !important;
+
+    box-shadow:
+        0 8px 28px
+        rgba(0,0,0,.18)
+        !important;
+}
+
+
+.chat-header-bar h2 {
+
+    margin:
+        0
+        !important;
+
+    font-size:
+        16px
+        !important;
+
+    color:
+        white
+        !important;
+}
+
+
+/* CHAT */
+
+.chat-msg {
+
+    margin-bottom:
+        20px
+        !important;
+}
+
+
+.msg-bubble-user {
+
+    max-width:
+        min(80%,720px)
+        !important;
+
+    padding:
+        11px 15px
+        !important;
+
+    background:
+        linear-gradient(
+            135deg,
+            #654bd2,
+            #513bb1
+        )
+        !important;
+
+    color:
+        white
+        !important;
+
+    border:
+        1px solid
+        rgba(255,255,255,.06)
+        !important;
+
+    border-radius:
+        16px 16px 4px 16px
+        !important;
+
+    box-shadow:
+        0 5px 18px
+        rgba(0,0,0,.15);
+}
+
+
+.msg-bubble-ai {
+
+    color:
+        #dde2ea
+        !important;
+
+    font-size:
+        14px
+        !important;
+
+    line-height:
+        1.68
+        !important;
+}
+
+
+.msg-ai-name {
+
+    color:
+        #9e8cff
+        !important;
+
+    font-size:
+        10px
+        !important;
+
+    font-weight:
+        700
+        !important;
+}
+
+
+/* CODE / TABLES */
+
+pre {
+
+    border-radius:
+        12px
+        !important;
+
+    overflow-x:
+        auto
+        !important;
+}
+
+
+table {
+
+    display:
+        block;
+
+    overflow-x:
+        auto;
+}
+
+
+/* INPUT COMPONENT */
+
+[data-testid="stCustomComponentV1"] {
+
+    width:
+        100%
+        !important;
+
+    max-width:
+        940px
+        !important;
+
+    margin:
+        0 auto
+        !important;
+}
+
+
+iframe {
+
+    width:
+        100%
+        !important;
+
+    max-width:
+        100%
+        !important;
+}
+
+
+/* MOBILE */
+
+@media (max-width:700px) {
+
+    .block-container {
+
+        padding:
+            11px
+            9px
+            120px
+            !important;
+    }
+
+
+    .msg-bubble-user {
+
+        max-width:
+            94%
+            !important;
+    }
+
+
+    [data-testid="stSidebar"] {
+
+        width:
+            min(86vw,300px)
+            !important;
+    }
+
+
+    .chat-header-bar {
+
+        padding:
+            11px 12px
+            !important;
+    }
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+
 # --- Sidebar ---
 with st.sidebar:
     st.markdown(f'<div style="margin-bottom: 20px;"><div style="font-size:20px; font-weight:800; letter-spacing:1px; margin-bottom:4px;">ROG AI</div><div style="font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px;"><span class="status-dot"></span> {current_profile}</div></div>', unsafe_allow_html=True)
@@ -662,9 +1137,15 @@ def ask_llm_sync(agent_id: str, history: list, user_query: str) -> str:
             )
 
     rag_docs = query_rag(
-        user_query,
-        n_results=2
-    )
+                       user_query,
+                       n_results=2,
+                       profile=current_profile,
+                       agent_id=agent_id,
+                       namespaces=allowed_namespaces(
+                           current_profile,
+                           agent_id,
+                       ),
+                   )
 
     sys_content = (
         f"Voce e o agente especialista: {agent['name']}.\n"
@@ -833,16 +1314,24 @@ if comp_value and isinstance(comp_value, dict):
                     f_hash = extraction.get("file_hash") or calculate_file_sha256(b)
 
                     rag_result = add_document_to_rag(
-                        file_hash=f_hash,
-                        text=extracted_text,
-                        metadata={
-                            "profile": current_profile,
-                            "filename": filename,
-                            "mime_type": mime_type,
-                            "size": file_size,
-                            "extraction_method": extraction.get("method"),
-                        },
-                    )
+                                         f_hash,
+                                         f"Documento enviado: {f['name']}",
+                                         {
+                                             "profile": str(
+                                                 current_profile
+                                             ).strip().lower(),
+                                 
+                                             "agent_id":
+                                                 agent_id,
+                                 
+                                             "namespace":
+                                                 write_namespace(
+                                                     current_profile,
+                                                     agent_id,
+                                                     shared_finance=False,
+                                                 ),
+                                         },
+                                     )
 
                     if not rag_result.get("success", False):
                         ctx_attachments.append(
@@ -1090,6 +1579,11 @@ if comp_value and isinstance(comp_value, dict):
                 assistant_message
             )
 
-            pm.save(st.session_state.long_memory)
+            pm.save(
+                {
+                    profile_key:
+                        st.session_state.long_memory
+                }
+            )
 
             st.rerun()
