@@ -1,255 +1,1095 @@
-import html
 import json
-import os
-import re
 import time
-import datetime
 import hashlib
-from typing import Any
-
-import requests
+import re
+import httpx
+import os
+import base64
+import hmac
 import streamlit as st
+import streamlit.components.v1 as components
 from duckduckgo_search import DDGS
-from supabase import create_client, Client
 
-st.set_page_config(page_title="ROG AI - Advanced Core", page_icon="🧠", layout="wide", initial_sidebar_state="expanded")
+from core.config import Config
+from core.database import PersistenceManager
+from core.vector_rag import add_document_to_rag, query_rag
+from core.sandbox import run_code
+from core.reports import generate_markdown_report, generate_csv_report
+from core.attachments import calculate_file_sha256, extract_document_text
+from core.skills_loader import list_available_skills, load_skill
+from core.llm_router import chat as llm_chat, local_available
+from core.agent_runtime import execute_agent
+from core.memory_engine import MemoryEngine
+from core.memory_commands import MemoryCommandProcessor
+from core.memory_consolidator import MemoryConsolidator
+from providers.vision import analyze_image
+from providers.audio import transcribe_audio_bytes
 
-DEEPSEEK_URL = "https://api.deepseek.com/v1/chat/completions"
-MEMORY_FILE = "long_term_memory.json"
+Config.validate()
+pm = PersistenceManager()
 
-PASSWORDS = {
-    "Allan": st.secrets.get("ALLAN_PASSWORD", "Allan2026@Pass"),
-    "Beatriz": st.secrets.get("BEATRIZ_PASSWORD", "Beatriz2026@Pass"),
-    "Natan": st.secrets.get("NATAN_PASSWORD", "Natan@Pass"),
-    "Tainan": st.secrets.get("TAINAN_PASSWORD", "Tainan@Pass")
-}
+# Setup de Pagina e Tema Strict
+_memory_engine_v2 = MemoryEngine()
+_memory_commands = MemoryCommandProcessor(_memory_engine_v2)
+_memory_consolidator = MemoryConsolidator(_memory_engine_v2)
 
-SUPABASE_URL = st.secrets.get("SUPABASE_URL", "")
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "")
 
-@st.cache_resource
-def init_supabase() -> Client | None:
-    if SUPABASE_URL and SUPABASE_KEY:
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
-    return None
+def should_consider_auto_memory(text: str) -> bool:
+    text = (text or "").strip()
 
-supabase = init_supabase()
+    if len(text) < 12:
+        return False
 
-if "authenticated" not in st.session_state: st.session_state.authenticated = False
-if "current_profile" not in st.session_state: st.session_state.current_profile = None
+    lowered = text.lower()
+
+    transient_prefixes = (
+        "qual ",
+        "quem ",
+        "quando ",
+        "onde ",
+        "como ",
+        "porque ",
+        "por que ",
+        "quanto ",
+        "me diga ",
+        "explique ",
+        "faça ",
+        "faca ",
+        "crie ",
+        "gere ",
+        "procure ",
+        "pesquise ",
+    )
+
+    if lowered.startswith(transient_prefixes):
+        return False
+
+    durable_markers = (
+        "eu prefiro",
+        "prefiro ",
+        "eu gosto",
+        "minha meta",
+        "meu objetivo",
+        "eu trabalho",
+        "meu trabalho",
+        "eu moro",
+        "estou desenvolvendo",
+        "meu projeto",
+        "meu carro",
+        "minha rotina",
+        "quero aprender",
+        "estou aprendendo",
+        "a partir de agora",
+        "daqui pra frente",
+        "daqui para frente",
+    )
+
+    return any(
+        marker in lowered
+        for marker in durable_markers
+    )
+
+st.set_page_config(page_title="ROG AI - Unified Core", page_icon="ROG", layout="wide", initial_sidebar_state="expanded")
+
+# --- Autenticacao Segura (Sem dicts hardcoded p/ bypass real) ---
+# --- Sessao / Auto-login local ---
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if "current_profile" not in st.session_state:
+    st.session_state.current_profile = None
+
+# Em ambiente local, entra automaticamente no perfil Allan.
+# Quando publicarmos o ROG AI, este comportamento sera substituido
+# por autenticacao persistente segura.
+_is_local = os.environ.get("ROG_LOCAL_AUTOLOGIN", "1") == "1"
+
+if _is_local and not st.session_state.authenticated:
+    st.session_state.authenticated = True
+    st.session_state.current_profile = "Allan"
+
+def verify_auth(username, input_pass):
+    try:
+        secret_key = f"{username.upper()}_PASSWORD"
+        real_pass = st.secrets[secret_key]
+        return hmac.compare_digest(input_pass.encode('utf-8'), real_pass.encode('utf-8'))
+    except KeyError:
+        return False
 
 if not st.session_state.authenticated:
-    url_token = st.query_params.get("auth")
-    if url_token:
-        for profile_name, password in PASSWORDS.items():
-            if url_token == hashlib.md5(password.encode()).hexdigest():
+    st.markdown("""<style>
+        .stApp { background: #080a0c; color:#e9edef; }
+        .login-box { max-width: 360px; margin: 12vh auto; padding: 40px; background: #0d1114; border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); text-align: center; }
+        .login-mark { width: 56px; height: 56px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; border-radius: 14px; background: rgba(0, 168, 132, 0.1); border: 1px solid rgba(0,168,132,0.3); color: #00a884; font-size: 24px; font-weight: 800; }
+        </style>""", unsafe_allow_html=True)
+    st.markdown('<div class="login-box"><div class="login-mark">R</div><h2 style="margin:0 0 5px;font-size:22px;">ROG AI</h2><p style="color:#8696a0;font-size:13px;margin-bottom:30px;">Acesso Restrito</p>', unsafe_allow_html=True)
+    
+    with st.form("auth_form"):
+        p_choice = st.selectbox("Perfil", ["Allan", "Beatriz", "Natan", "Tainan"], label_visibility="collapsed")
+        i_pass = st.text_input("Senha", type="password", placeholder="Master Password", label_visibility="collapsed")
+        submitted = st.form_submit_button("Conectar", use_container_width=True)
+        if submitted:
+            if verify_auth(p_choice, i_pass):
                 st.session_state.authenticated = True
-                st.session_state.current_profile = profile_name
-                break
+                st.session_state.current_profile = p_choice
+                st.rerun()
+            else:
+                st.error("Credenciais invalidas ou nao configuradas em secrets.toml.")
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
 
-PROFILES = {
-    "Allan": ["IDENTIDADE: Allan Vitor Portello, 26 anos (21/04/2000). Altura: 1.90m, Peso: ~118.9kg.", "FAMÍLIA: Casado com Beatriz (agronomia/A&W).", "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026).", "TRABALHO: Setor de limpeza no Canadá com colega Serdar. Sem diploma.", "METAS: Plano de CAD 5.000 (faculdade Beatriz) para set/2026. Troca do Mazda 3 (2012).", "TECH & GAMES: Joga CS2 competitivo. Monta PCs de alta performance.", "FITNESS: Musculação na Crunch Fitness. Dieta hiperproteica.", "ESTILO: Racional, lógico, sem clichês. Respostas densas e objetivas.", "MOEDA: Dólar Canadense (CAD)."],
-    "Beatriz": ["IDENTIDADE: Beatriz. Casada com Allan Vitor Portello.", "ESTUDOS E TRABALHO: Formada em agronomia, gestão de negócios. Trabalha na A&W.", "LOCALIZAÇÃO: Hamilton, Ontario (mudando para Brantford em set/2026).", "METAS FINANCEIRAS: Parcelamento universitário de CAD 5.000 para set/2026.", "FITNESS: Treino e dieta alinhados à rotina.", "MOEDA: Dólar Canadense (CAD)."],
-    "Natan": ["IDENTIDADE: Usuário Natan (Irmão de Allan).", "DIRETRIZES: Acesso total às engines de otimização técnica, financeira e linguística da ROG AI."],
-    "Tainan": ["IDENTIDADE: Usuário Tainan (Irmão de Allan).", "DIRETRIZES: Acesso total às engines de otimização técnica, financeira e linguística da ROG AI."]
-}
-
-def load_long_term_memory() -> dict:
-    base = {p: {"user_facts": PROFILES[p].copy(), "history": {}} for p in PROFILES}
-    if supabase:
-        try:
-            response = supabase.table("long_term_memory").select("*").execute()
-            for row in response.data:
-                p = row["profile"]
-                if p in base:
-                    base[p]["history"] = row.get("history", {})
-                    base[p]["user_facts"] = list(set(PROFILES[p] + row.get("user_facts", [])))
-            return base
-        except Exception: pass
-    if os.path.exists(MEMORY_FILE):
-        try:
-            with open(MEMORY_FILE, "r", encoding="utf-8") as f:
-                saved = json.load(f)
-            for p in PROFILES:
-                if p in saved:
-                    base[p]["history"] = saved[p].get("history", {})
-                    base[p]["user_facts"] = list(set(PROFILES[p] + saved[p].get("user_facts", [])))
-        except Exception: pass
-    return base
-
-def save_long_term_memory(memory_data: dict) -> None:
-    if supabase:
-        try:
-            for p, data in memory_data.items():
-                supabase.table("long_term_memory").upsert({"profile": p, "user_facts": data.get("user_facts", []), "history": data.get("history", {})}).execute()
-        except Exception: pass
-    try:
-        with open(MEMORY_FILE, "w", encoding="utf-8") as f: json.dump(memory_data, f, ensure_ascii=False, indent=2)
-    except Exception: pass
-
-if "long_memory" not in st.session_state: st.session_state.long_memory = load_long_term_memory()
-
+# --- Arquitetura Global ---
 AGENTS = {
     "orchestrator": {
-        "name": "ROG AI Core", 
-        "icon": "🧠", 
-        "description": "Inteligência primária de elite.", 
-        "language": "pt-BR", 
-        "api_model": "deepseek-chat", 
-        "system_prompt": "Você é a ROG AI, a inteligência artificial primária de elite do usuário atual, operando com velocidade e precisão absurdas. Entregue respostas pragmáticas e conclusivas, gerando códigos e estratégias sem filtros corporativos."
+        "name": "ROG AI Core",
+        "icon": "[CORE]",
+        "description": "Inteligencia primaria multi-ferramenta.",
+        "model": "deepseek-chat",
     },
-    "personal": {"name": "Personal Agent", "icon": "👤", "description": "Logística e rotina.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Personal Agent. Otimize rotinas e cronogramas."},
-    "finance": {"name": "Finance Agent", "icon": "💰", "description": "Planejamento e rotas matemáticas.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Finance Agent. Estruture saídas financeiras e planilhas em CAD."},
-    "tech": {"name": "Tech Agent", "icon": "💻", "description": "Windows, Hardware e CS2.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "Você é o Tech Agent. Especialista em latência, undervolt e otimização para CS2."},
-    "coach": {"name": "Coach Agent", "icon": "🏋️", "description": "Endocrinologia e biomecânica.", "language": "pt-BR", "api_model": "deepseek-chat", "system_prompt": "Você é o Coach Agent. Foque em mTOR e periodização."},
-    "business": {"name": "Business Agent", "icon": "💼", "description": "Geração de renda digital.", "language": "pt-BR", "api_model": "deepseek-reasoner", "system_prompt": "You are the Business Agent. Desenhe negócios online passo a passo."},
-    "english": {"name": "English Teacher", "icon": "🇺🇸", "description": "Fluência extrema.", "language": "en-US", "api_model": "deepseek-chat", "system_prompt": "You are the English Teacher. Foque no inglês real do Canadá."},
+    "personal": {
+        "name": "Personal Agent",
+        "icon": "[PERSONAL]",
+        "description": "Logistica, rotina e organizacao pessoal.",
+        "model": "deepseek-chat",
+    },
+    "finance": {
+        "name": "Finance Agent",
+        "icon": "[FINANCE]",
+        "description": "Planejamento e analise financeira.",
+        "model": "deepseek-reasoner",
+    },
+    "tech": {
+        "name": "Tech Agent",
+        "icon": "[TECH]",
+        "description": "Hardware, software e engenharia de sistemas.",
+        "model": "deepseek-reasoner",
+    },
+    "coach": {
+        "name": "Coach Agent",
+        "icon": "[COACH]",
+        "description": "Treinamento, fisiologia e biomecanica.",
+        "model": "deepseek-chat",
+    },
+    "business": {
+        "name": "Business Agent",
+        "icon": "[BUSINESS]",
+        "description": "Negocios, estrategia e geracao de receita.",
+        "model": "deepseek-reasoner",
+    },
+    "english": {
+        "name": "English Teacher",
+        "icon": "[ENGLISH]",
+        "description": "Ingles, traducao, conversacao e fluencia.",
+        "model": "deepseek-chat",
+    },
+    "document": {
+        "name": "Document Agent",
+        "icon": "[DOC]",
+        "description": "Analise local de documentos, OCR e RAG.",
+        "model": "qwen3",
+    },
+}
+if "current_agent" not in st.session_state: st.session_state.current_agent = "orchestrator"
+if "long_memory" not in st.session_state: st.session_state.long_memory = pm.load_data() if hasattr(pm, "load_data") else {}
+if "processed_events" not in st.session_state: st.session_state.processed_events = set()
+if "conversations" not in st.session_state: st.session_state.conversations = {k: [] for k in AGENTS}
+
+current_profile = st.session_state.current_profile
+agent_id = st.session_state.current_agent
+agent = AGENTS[agent_id]
+
+# ============================================================
+# ALLAN_AI_BETA_UI_V1
+# Release candidate visual / responsive stabilization
+# ============================================================
+
+st.markdown("""
+<style>
+
+/* ---------- TOKENS ---------- */
+
+:root {
+    --allan-bg: #080a0c;
+    --allan-surface: #0d1114;
+    --allan-surface-2: #121619;
+    --allan-border: rgba(255,255,255,.075);
+    --allan-border-strong: rgba(255,255,255,.12);
+    --allan-text: #edf1f3;
+    --allan-muted: #8b949b;
+    --allan-accent: #00a884;
 }
 
-if "current_agent" not in st.session_state: st.session_state.current_agent = "orchestrator"
 
-def auto_web_search(query: str) -> str:
-    trigger_words = ["procure", "busque", "pesquise", "internet", "google", "web", "preço", "promoção", "notícia", "hoje", "agora", "bestbuy", "amazon"]
-    if not any(word in query.lower() for word in trigger_words): return ""
-    try:
-        results = DDGS().text(query, max_results=3)
-        if not results: return ""
-        context = "\\n[DADOS DA INTERNET EM TEMPO REAL]:\\n"
-        for r in results: context += f"- Título: {r.get('title')}\\n  Link: {r.get('href')}\\n  Resumo: {r.get('body')}\\n\\n"
-        return context
-    except Exception as e: return f"\\n[ERRO BUSCA WEB: {str(e)}]"
+/* ---------- STREAMLIT CHROME ---------- */
 
-def ask_deepseek(agent_id: str, history: list, user_query: str) -> str:
-    api_key = st.secrets["DEEPSEEK_API_KEY"]
-    agent = AGENTS[agent_id]
-    target_model = agent.get("api_model", "deepseek-chat")
-    
-    memory_facts = "\\n- ".join(st.session_state.long_memory[st.session_state.current_profile].get("user_facts", []))
-    system_content = f"{agent['system_prompt'].strip()}\\n\\n[MEMÓRIA - PERFIL: {st.session_state.current_profile.upper()}]:\\n- {memory_facts}"
-    
-    web_context = auto_web_search(user_query)
-    if web_context: system_content += web_context
+html, body,
+[data-testid="stAppViewContainer"],
+.stApp {
+    background: var(--allan-bg) !important;
+}
 
-    messages = [{"role": "system", "content": system_content}]
-    for item in history[-30:]:
-        if item.get("role") in {"user", "assistant"} and item.get("content"): 
-            messages.append({"role": item["role"], "content": item["content"]})
-    
-    try:
-        response = requests.post(DEEPSEEK_URL, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json={"model": target_model, "messages": messages, "temperature": 0.3}, timeout=120)
-        response.raise_for_status()
-        data = response.json()
-        reasoning = data["choices"][0]["message"].get("reasoning_content", "")
-        content = data["choices"][0]["message"].get("content", "")
-        return f"> *Processamento lógico avançado executado via R1.*\\n\\n{content}" if reasoning and target_model == "deepseek-reasoner" else content.strip()
-    except Exception as e:
-        return f"❌ Erro na Comunicação com a API: {str(e)}"
+[data-testid="stHeader"],
+header[data-testid="stHeader"],
+footer,
+#MainMenu {
+    display: none !important;
+}
 
-# ================= RENDERIZAÇÃO GERAL =================
+[data-testid="stAppViewBlockContainer"] {
+    padding-top: 0 !important;
+}
 
+
+/* ---------- MAIN CONTENT ---------- */
+
+.block-container {
+    width: 100% !important;
+    max-width: 1040px !important;
+    margin: 0 auto !important;
+    padding:
+        22px
+        clamp(14px, 3vw, 28px)
+        150px
+        !important;
+}
+
+.main,
+section.main {
+    background: var(--allan-bg) !important;
+}
+
+
+/* ---------- SIDEBAR ---------- */
+
+[data-testid="stSidebar"] {
+    background: #0b0e10 !important;
+    border-right: 1px solid var(--allan-border) !important;
+}
+
+[data-testid="stSidebar"] > div:first-child {
+    padding-top: 18px !important;
+}
+
+[data-testid="stSidebar"] button {
+    min-height: 42px !important;
+    border-radius: 11px !important;
+    border: 1px solid transparent !important;
+    transition:
+        background .14s ease,
+        border-color .14s ease,
+        transform .14s ease !important;
+}
+
+[data-testid="stSidebar"] button:hover {
+    background: rgba(255,255,255,.045) !important;
+    border-color: var(--allan-border) !important;
+}
+
+[data-testid="stSidebar"] button:active {
+    transform: scale(.985);
+}
+
+
+/* ---------- HEADER ---------- */
+
+.chat-header-bar {
+    width: 100% !important;
+    box-sizing: border-box !important;
+
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+
+    gap: 16px !important;
+
+    padding: 13px 16px !important;
+    margin: 0 0 24px !important;
+
+    background:
+        linear-gradient(
+            180deg,
+            rgba(19,23,26,.94),
+            rgba(12,15,17,.94)
+        ) !important;
+
+    border: 1px solid var(--allan-border) !important;
+    border-radius: 14px !important;
+
+    box-shadow:
+        0 8px 28px rgba(0,0,0,.18) !important;
+
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+
+.chat-header-bar h2 {
+    margin: 0 !important;
+    min-width: 0 !important;
+
+    color: #fff !important;
+    font-size: 16px !important;
+    line-height: 1.25 !important;
+    font-weight: 700 !important;
+}
+
+
+/* ---------- CHAT ---------- */
+
+.chat-msg {
+    width: 100% !important;
+    box-sizing: border-box !important;
+    margin-bottom: 20px !important;
+}
+
+.msg-role-user {
+    align-items: flex-end !important;
+}
+
+.msg-role-ai {
+    align-items: flex-start !important;
+}
+
+.msg-bubble-user {
+    max-width: min(82%, 720px) !important;
+
+    padding: 11px 15px !important;
+
+    background:
+        linear-gradient(
+            145deg,
+            #075e54,
+            #075449
+        ) !important;
+
+    border: 1px solid rgba(255,255,255,.055) !important;
+    border-radius: 17px 17px 5px 17px !important;
+
+    color: #fff !important;
+
+    line-height: 1.52 !important;
+
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
+
+    box-shadow:
+        0 4px 14px rgba(0,0,0,.16) !important;
+}
+
+.msg-bubble-ai {
+    width: 100% !important;
+    max-width: 100% !important;
+
+    color: var(--allan-text) !important;
+
+    line-height: 1.68 !important;
+    overflow-wrap: anywhere !important;
+}
+
+.msg-ai-name {
+    margin-bottom: 7px !important;
+    color: var(--allan-accent) !important;
+    font-size: 12px !important;
+    font-weight: 700 !important;
+}
+
+
+/* ---------- MARKDOWN DA IA ---------- */
+
+.msg-bubble-ai p {
+    margin-top: .35em !important;
+    margin-bottom: .8em !important;
+}
+
+.msg-bubble-ai h1,
+.msg-bubble-ai h2,
+.msg-bubble-ai h3 {
+    color: #fff !important;
+    line-height: 1.25 !important;
+}
+
+.msg-bubble-ai h1 {
+    font-size: 1.55rem !important;
+}
+
+.msg-bubble-ai h2 {
+    margin-top: 1.35rem !important;
+    font-size: 1.25rem !important;
+}
+
+.msg-bubble-ai h3 {
+    font-size: 1.08rem !important;
+}
+
+.msg-bubble-ai ul,
+.msg-bubble-ai ol {
+    padding-left: 1.3rem !important;
+}
+
+.msg-bubble-ai li {
+    margin-bottom: .35rem !important;
+}
+
+
+/* ---------- CODE ---------- */
+
+[data-testid="stCodeBlock"],
+pre {
+    max-width: 100% !important;
+    overflow-x: auto !important;
+    border-radius: 12px !important;
+}
+
+code {
+    overflow-wrap: normal !important;
+}
+
+
+/* ---------- TABLES ---------- */
+
+[data-testid="stTable"],
+[data-testid="stDataFrame"],
+table {
+    max-width: 100% !important;
+}
+
+.msg-bubble-ai table {
+    display: block !important;
+    width: 100% !important;
+    overflow-x: auto !important;
+    border-collapse: collapse !important;
+}
+
+
+/* ---------- ALERTAS ---------- */
+
+[data-testid="stAlert"] {
+    border-radius: 12px !important;
+    border: 1px solid var(--allan-border) !important;
+}
+
+
+/* ---------- SPINNER ---------- */
+
+[data-testid="stSpinner"] {
+    color: var(--allan-muted) !important;
+}
+
+
+/* ---------- CUSTOM COMPONENT ---------- */
+
+iframe {
+    max-width: 100% !important;
+}
+
+[data-testid="stCustomComponentV1"] {
+    width: 100% !important;
+    max-width: 100% !important;
+}
+
+
+/* ---------- SCROLL ---------- */
+
+* {
+    scrollbar-width: thin;
+    scrollbar-color:
+        rgba(255,255,255,.16)
+        transparent;
+}
+
+*::-webkit-scrollbar {
+    width: 7px;
+    height: 7px;
+}
+
+*::-webkit-scrollbar-thumb {
+    background: rgba(255,255,255,.16);
+    border-radius: 999px;
+}
+
+*::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+
+/* ---------- TABLET ---------- */
+
+@media (max-width: 900px) {
+
+    .block-container {
+        max-width: 100% !important;
+        padding:
+            16px
+            18px
+            140px
+            !important;
+    }
+
+    .chat-header-bar {
+        align-items: flex-start !important;
+    }
+
+    .msg-bubble-user {
+        max-width: 88% !important;
+    }
+}
+
+
+/* ---------- PHONE ---------- */
+
+@media (max-width: 640px) {
+
+    .block-container {
+        padding:
+            10px
+            10px
+            125px
+            !important;
+    }
+
+    .chat-header-bar {
+        display: block !important;
+        padding: 12px 13px !important;
+        margin-bottom: 17px !important;
+        border-radius: 12px !important;
+    }
+
+    .chat-header-bar h2 {
+        font-size: 15px !important;
+        margin-bottom: 4px !important;
+    }
+
+    .chat-header-bar span {
+        display: block !important;
+        width: 100% !important;
+        line-height: 1.35 !important;
+        font-size: 11px !important;
+    }
+
+    .chat-msg {
+        margin-bottom: 16px !important;
+    }
+
+    .msg-bubble-user {
+        max-width: 92% !important;
+        padding: 10px 13px !important;
+        font-size: 14px !important;
+    }
+
+    .msg-bubble-ai {
+        font-size: 14px !important;
+        line-height: 1.58 !important;
+    }
+
+    [data-testid="stSidebar"] {
+        width: min(84vw, 310px) !important;
+    }
+
+    [data-testid="stSidebar"] button {
+        min-height: 44px !important;
+    }
+}
+
+
+/* ---------- VERY SMALL PHONE ---------- */
+
+@media (max-width: 390px) {
+
+    .block-container {
+        padding-left: 8px !important;
+        padding-right: 8px !important;
+    }
+
+    .msg-bubble-user {
+        max-width: 95% !important;
+    }
+
+}
+
+</style>
+""", unsafe_allow_html=True)
+
+
+
+# --- Estilos Core (Ocultando o Streamlit generico) ---
 st.markdown('''
 <style>
-:root { --amoled:#080d10; --bubble-ai:#172229; --bubble-user:#075e54; --border:#263840; --text:#e9edef; --muted:#8696a0; --green:#00a884; }
-.stApp { background: radial-gradient(circle at 50% 10%, rgba(0,168,132,.08), transparent 35%), linear-gradient(180deg,#080d10,#0b141a) !important; color:var(--text) !important; }
-[data-testid="stHeader"] { background:transparent !important; }
-[data-testid="stSidebar"] { background:linear-gradient(180deg,#0e171c,#0b141a) !important; border-right:1px solid var(--border) !important; }
-.login-box { max-width:400px; margin: 100px auto; padding:40px 30px; background:linear-gradient(145deg,#121d23,#0c1419); border:1px solid var(--border); border-radius:24px; box-shadow:0 25px 80px rgba(0,0,0,.45); text-align:center; }
-.rog-mark { width:64px; height:64px; margin:0 auto 16px; display:flex; align-items:center; justify-content:center; border-radius:18px; background:linear-gradient(145deg,#123d35,#0d211d); border:1px solid rgba(0,168,132,.45); color:#36d9b3; font-size:28px; font-weight:800; }
-.chat-header { min-height:70px; display:flex; align-items:center; gap:13px; background:rgba(17,28,34,.92); border:1px solid var(--border); border-radius:15px; padding:10px 16px; margin-bottom:13px; backdrop-filter:blur(10px); }
-.chat-avatar { width:46px; height:46px; display:flex; align-items:center; justify-content:center; background:linear-gradient(145deg,#1a2a31,#0d171c); border:1px solid #344750; border-radius:14px; font-size:23px; }
-.chat-agent-name { color:var(--text); font-size:18px; font-weight:700; }
-.chat-agent-desc { color:var(--muted); font-size:12px; margin-top:3px; }
-.message-user,.message-ai { display:flex; width:100%; margin:10px 0; }
-.message-user { justify-content:flex-end; }
-.message-ai { justify-content:flex-start; }
-.bubble-user { max-width:80%; background:linear-gradient(145deg,#075e54,#075449); border:1px solid #0a806f; border-radius:14px 4px 14px 14px; padding:12px 16px; font-size:16px; line-height: 1.5; box-shadow:0 2px 7px rgba(0,0,0,.18); }
-.bubble-ai { max-width:84%; background:linear-gradient(145deg,#172229,#152027); border:1px solid var(--border); border-radius:4px 14px 14px 14px; padding:12px 18px; font-size:16px; line-height: 1.6; box-shadow:0 2px 7px rgba(0,0,0,.18); }
-.bubble-ai p, .bubble-user p, .bubble-ai li { font-size: 16px !important; }
-.message-time { color:rgba(233,237,239,.48); font-size:10px; text-align:right; margin-top:6px; }
-[data-testid="stSidebar"] button { border-radius:10px !important; border:1px solid transparent !important; background:transparent !important; color:var(--text) !important; text-align:left !important; padding:8px 12px !important; transition:0.2s; }
-[data-testid="stSidebar"] button:hover { background:#17232a !important; border-color:var(--border) !important; }
-[data-testid="stSidebar"] button[kind="primary"] { background:rgba(0,168,132,.12) !important; border-left:3px solid var(--green) !important; }
+:root { --surface: #0a0a0c; --border: rgba(255,255,255,0.08); }
+.stApp { background: var(--surface) !important; color: #e9edef !important; }
+header, footer { display: none !important; }
+.block-container { max-width: 960px !important; padding: 2rem 1rem 120px !important; }
+[data-testid="stSidebar"] { background: #0d1114 !important; border-right: 1px solid var(--border) !important; }
+.chat-msg { display: flex; flex-direction: column; width: 100%; margin-bottom: 20px; }
+.msg-role-user { align-items: flex-end; }
+.msg-role-ai { align-items: flex-start; }
+.msg-bubble-user { background: #005c4b; color: #fff; padding: 12px 16px; border-radius: 16px 16px 2px 16px; max-width: 85%; font-size: 15px; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
+.msg-bubble-ai { background: transparent; color: #e9edef; padding: 4px 0; max-width: 100%; font-size: 15px; }
+.msg-ai-name { font-size: 12px; font-weight: 600; color: #00a884; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
+.chat-header-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: rgba(13, 17, 20, 0.7); border-radius: 16px; border: 1px solid var(--border); margin-bottom: 30px; backdrop-filter: blur(10px); }
+.chat-header-bar h2 { margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px; color: #fff; }
+.status-dot { width: 8px; height: 8px; background: #00a884; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #00a884; }
 </style>
 ''', unsafe_allow_html=True)
 
-if not st.session_state.authenticated:
-    st.markdown('''
-    <div class="login-box">
-        <div class="rog-mark">R</div>
-        <div style="font-size:24px; font-weight:bold; margin-bottom:5px;">ROG AI</div>
-        <div style="font-size:12px; color:#8696a0; margin-bottom:20px;">Acesso Criptografado</div>
-    ''', unsafe_allow_html=True)
+# --- Sidebar ---
+with st.sidebar:
+    st.markdown(f'<div style="margin-bottom: 20px;"><div style="font-size:20px; font-weight:800; letter-spacing:1px; margin-bottom:4px;">ROG AI</div><div style="font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px;"><span class="status-dot"></span> {current_profile}</div></div>', unsafe_allow_html=True)
     
-    profile_choice = st.selectbox("Selecione sua conta", ["Allan", "Beatriz", "Natan", "Tainan"])
-    input_pass = st.text_input("Senha", type="password")
-    lembrar_me = st.checkbox("Manter logado (Favoritar URL)")
-    
-    if st.button("Autenticar", use_container_width=True, type="primary"):
-        if input_pass == PASSWORDS[profile_choice]:
-            st.session_state.authenticated = True
-            st.session_state.current_profile = profile_choice
-            if lembrar_me:
-                st.query_params["auth"] = hashlib.md5(input_pass.encode()).hexdigest()
+    for a_id, a_data in AGENTS.items():
+        is_active = "? " if a_id == agent_id else ""
+        if st.button(f"{is_active}{a_data['icon']} {a_data['name']}", key=f"nav_{a_id}", use_container_width=True):
+            st.session_state.current_agent = a_id
             st.rerun()
-        else:
-            st.error("Senha incorreta.")
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-else:
-    current_profile = st.session_state.current_profile
-    if "conversations" not in st.session_state:
-        st.session_state.conversations = st.session_state.long_memory[current_profile].get("history", {a_id: [] for a_id in AGENTS})
-    
-    with st.sidebar:
-        st.markdown(f'''
-            <div style="display:flex; align-items:center; gap:10px; margin-bottom:20px;">
-                <div class="rog-mark" style="width:36px; height:36px; font-size:16px; margin:0;">R</div>
-                <div><div style="font-weight:bold; font-size:18px;">ROG AI</div><div style="font-size:11px; color:#00a884;">● {current_profile} Online</div></div>
-            </div>
-            <hr style="border-color:#263840; margin:10px 0;">
-        ''', unsafe_allow_html=True)
-        
-        for a_id, a_data in AGENTS.items():
-            sel = (st.session_state.current_agent == a_id)
-            if st.button(f"{a_data['icon']}  {a_data['name']}", key=f"agent_{a_id}", use_container_width=True, type="primary" if sel else "secondary"):
-                if not sel: st.session_state.current_agent = a_id; st.rerun()
-                
-        st.markdown('<hr style="border-color:#263840; margin:15px 0;">', unsafe_allow_html=True)
-        if st.button("↪ Encerrar Sessão", use_container_width=True):
-            st.query_params.clear()
-            st.session_state.authenticated = False
-            st.session_state.current_profile = None
-            st.rerun()
-
-    agent_id = st.session_state.current_agent
-    agent = AGENTS[agent_id]
-    
-    st.markdown(f'''
-    <div class="chat-header">
-        <div class="chat-avatar">{agent["icon"]}</div>
-        <div><div class="chat-agent-name">{agent["name"]}</div><div class="chat-agent-desc">{agent["description"]}</div></div>
-    </div>
-    ''', unsafe_allow_html=True)
-
-    history = st.session_state.conversations.get(agent_id, [])
-    for msg in history:
-        if msg["role"] == "user":
-            st.markdown(f'<div class="message-user"><div class="bubble-user">{html.escape(msg["content"])}<div class="message-time">{msg.get("time", "")}</div></div></div>', unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div class="message-ai"><div class="bubble-ai"><div style="color:#00a884; font-size:11px; font-weight:bold; margin-bottom:6px;">{msg.get("agent", {}).get("icon", "🤖")} {msg.get("agent", {}).get("name", "ROG AI")}</div>{msg["content"]}<div class="message-time">{msg.get("time", "")}</div></div></div>', unsafe_allow_html=True)
-
-    user_input = st.chat_input(f"Mensagem para {agent['name']}...")
-
-    if user_input:
-        st.session_state.conversations[agent_id].append({"role": "user", "content": user_input, "time": time.strftime("%H:%M"), "agent": agent})
-        st.session_state.long_memory[current_profile]["history"] = st.session_state.conversations
-        save_long_term_memory(st.session_state.long_memory)
+            
+    st.markdown("<hr style='border-color: rgba(255,255,255,0.05); margin: 30px 0;'>", unsafe_allow_html=True)
+    if st.button("Sair / Desconectar", use_container_width=True):
+        st.session_state.authenticated = False
         st.rerun()
 
-    if len(history) > 0 and history[-1]["role"] == "user":
-        with st.spinner(f"Aguarde, {agent['name']} está processando..."):
-            ans = ask_deepseek(agent_id, history[:-1], history[-1]["content"])
-            st.session_state.conversations[agent_id].append({"role": "assistant", "content": ans, "time": time.strftime("%H:%M"), "agent": agent})
-            st.session_state.long_memory[current_profile]["history"] = st.session_state.conversations
-            save_long_term_memory(st.session_state.long_memory)
+# --- Funcoes do Pipeline Seguro e Sincrono ---
+def ask_llm_sync(agent_id: str, history: list, user_query: str) -> str:
+    agent = AGENTS[agent_id]
+    model = agent.get("model", "deepseek-chat")
+
+    skills_ctx = ""
+
+    for skill_name in list_available_skills():
+        content = load_skill(skill_name)
+
+        if content:
+            skills_ctx += (
+                f"\n[SKILL {skill_name.upper()}]:\n"
+                f"{content}"
+            )
+
+    rag_docs = query_rag(
+        user_query,
+        n_results=2
+    )
+
+    sys_content = (
+        f"Voce e o agente especialista: {agent['name']}.\n"
+        f"Instrucao primaria: {agent['description']}.\n"
+        "Responda em Markdown limpo."
+    )
+
+    if skills_ctx:
+        sys_content += (
+            "\n\nHabilidades carregadas:"
+            + skills_ctx
+        )
+
+    if rag_docs:
+        sys_content += (
+            "\n\nContexto Base de Conhecimento (RAG):\n"
+            + "\n".join(rag_docs)
+        )
+
+    messages = [
+        {
+            "role": "system",
+            "content": sys_content
+        }
+    ]
+
+    for item in history[-20:]:
+        messages.append(
+            {
+                "role": item["role"],
+                "content": item["content"]
+            }
+        )
+
+    messages.append(
+        {
+            "role": "user",
+            "content": user_query
+        }
+    )
+
+    try:
+        return llm_chat(
+            model=model,
+            messages=messages,
+            temperature=0.2,
+            max_tokens=2048 if "qwen3" in model.lower() else 4096
+        )
+
+    except Exception as e:
+        return (
+            f"**Erro Sistemico de Roteamento "
+            f"(Model: {model}):** {str(e)}"
+        )
+
+def load_chat_component():
+    p = os.path.join(os.path.dirname(__file__), "frontend", "chat_input", "dist")
+    return components.declare_component("rog_chat", path=p) if os.path.exists(p) else None
+
+chat_comp = load_chat_component()
+if not chat_comp:
+    st.error("Erro Critico: Frontend nao compilado. Execute setup.ps1.")
+    st.stop()
+
+# --- Cabecalho do chat ---
+st.markdown(
+    f"""
+    <div class="chat-header-bar">
+        <h2>{agent['icon']} {agent['name']}</h2>
+        <span style="font-size:12px;color:#8696a0;">
+            <span class="status-dot"></span> Online
+        </span>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
+# --- Historico da conversa ---
+for message in st.session_state.conversations.get(agent_id, []):
+    role = message.get("role", "")
+    content = message.get("content", "")
+
+    if role == "user":
+        with st.chat_message("user"):
+            st.markdown(content)
+
+    elif role == "assistant":
+        with st.chat_message("assistant"):
+
+            runtime = message.get("runtime", {})
+
+            selected_agent = runtime.get(
+                "selected_agent",
+                agent_id
+            )
+
+            selected_name = runtime.get(
+                "agent_name",
+                agent["name"]
+            )
+
+            selected_model = runtime.get(
+                "model",
+                agent.get("model", "")
+            )
+
+            if agent_id == "orchestrator" and selected_agent != "orchestrator":
+                st.caption(
+                    f"ROG AI Core -> {selected_name} | {selected_model}"
+                )
+            else:
+                st.caption(
+                    f"{selected_name} | {selected_model}"
+                )
+
+            st.markdown(content)
+
+# Key global impede re-montagem ao trocar de agente
+comp_value = chat_comp(key="rog_global_composer")
+
+if comp_value and isinstance(comp_value, dict):
+    print("DEBUG_EVENT_RECEIVED:", comp_value, flush=True)
+    eid = comp_value.get("event_id")
+    etype = comp_value.get("type")
+    
+    # Event Deduplication Control
+    if eid and eid not in st.session_state.processed_events:
+        st.session_state.processed_events.add(eid)
+        if len(st.session_state.processed_events) > 100:
+            st.session_state.processed_events.clear() # Mantem pegada de memoria leve
+            
+        final_query = None
+        
+        if etype == "send":
+            txt = comp_value.get("text", "").strip()
+            files = comp_value.get("files", [])
+            ctx_attachments = []
+            
+            for f in files:
+                try:
+                    filename = f.get("name", "arquivo")
+                    mime_type = f.get("type", "")
+                    file_size = f.get("size", 0)
+
+                    b = base64.b64decode(f["data"])
+
+                    extraction = extract_document_text(
+                        file_bytes=b,
+                        filename=filename,
+                        mime_type=mime_type,
+                    )
+
+                    if not extraction.get("success"):
+                        error_message = extraction.get(
+                            "error",
+                            "Falha desconhecida na extracao."
+                        )
+
+                        ctx_attachments.append(
+                            f"[Anexo nao processado: {filename} | {error_message}]"
+                        )
+
+                        continue
+
+                    extracted_text = extraction.get("text", "").strip()
+                    f_hash = extraction.get("file_hash") or calculate_file_sha256(b)
+
+                    rag_result = add_document_to_rag(
+                        file_hash=f_hash,
+                        text=extracted_text,
+                        metadata={
+                            "profile": current_profile,
+                            "filename": filename,
+                            "mime_type": mime_type,
+                            "size": file_size,
+                            "extraction_method": extraction.get("method"),
+                        },
+                    )
+
+                    if not rag_result.get("success", False):
+                        ctx_attachments.append(
+                            f"[Falha ao indexar no RAG: {filename}]"
+                        )
+                        continue
+
+                    ctx_attachments.append(
+                        f"[Anexo processado: {filename} | "
+                        f"{rag_result.get('chunks', 0)} chunks | "
+                        f"metodo={extraction.get('method')}]"
+                    )
+
+                except Exception as e:
+                    ctx_attachments.append(
+                        f"[Falha ao ler {f.get('name', 'arquivo')}: {e}]"
+                    )
+                    
+            if ctx_attachments:
+                final_query = "\n".join(ctx_attachments) + "\n\n" + (txt if txt else "Verifique os anexos processados.")
+            else:
+                final_query = txt if txt else None
+
+        elif etype == "audio":
+            try:
+                b = base64.b64decode(comp_value.get("audio", ""))
+                transcript = transcribe_audio_bytes(b)
+                if transcript:
+                    final_query = f"??? *Transcricao de audio:*\n{transcript.strip()}"
+            except Exception as e:
+                st.error(f"Erro Whisper: {e}")
+
+        # Se houver query valida processada, executa pipeline LLM
+        if final_query:
+            print("DEBUG_FINAL_QUERY:", repr(final_query), flush=True)
+
+            # ====================================================
+            # MEMORY ENGINE V2 - COMMANDS
+            # ====================================================
+
+            memory_command_result = None
+            auto_memory_result = None
+
+            try:
+                memory_command_result = _memory_commands.process(
+                    profile=current_profile,
+                    user_text=final_query,
+                )
+
+            except Exception as memory_command_error:
+                print(
+                    "MEMORY_COMMAND_ERROR:",
+                    repr(memory_command_error),
+                    flush=True,
+                )
+
+            # ----------------------------------------------------
+            # Comando explicito de memoria
+            # ----------------------------------------------------
+
+            if (
+                memory_command_result
+                and memory_command_result.get("handled")
+            ):
+                command = memory_command_result.get("command")
+
+                if command == "REMEMBER":
+                    inner = memory_command_result.get(
+                        "result",
+                        {},
+                    )
+
+                    action = inner.get(
+                        "action",
+                        "SKIP",
+                    )
+
+                    if memory_command_result.get("success"):
+
+                        if action == "UPDATE":
+                            command_answer = "Memoria atualizada."
+
+                        elif action == "SKIP":
+                            command_answer = (
+                                "Isso ja estava registrado na memoria."
+                            )
+
+                        else:
+                            command_answer = "Memoria salva."
+
+                    else:
+                        command_answer = (
+                            "Nao consegui salvar essa memoria."
+                        )
+
+                elif command == "FORGET":
+                    forgotten = memory_command_result.get(
+                        "forgotten",
+                        0,
+                    )
+
+                    if forgotten > 0:
+                        command_answer = (
+                            f"Removi {forgotten} memoria(s) relacionada(s)."
+                        )
+                    else:
+                        command_answer = (
+                            "Nao encontrei memoria correspondente "
+                            "para remover."
+                        )
+
+                else:
+                    command_answer = (
+                        "Comando de memoria processado."
+                    )
+
+                st.session_state.conversations[agent_id].append(
+                    {
+                        "role": "user",
+                        "content": final_query,
+                    }
+                )
+
+                st.session_state.conversations[agent_id].append(
+                    {
+                        "role": "assistant",
+                        "content": command_answer,
+                        "runtime": {
+                            "requested_agent": agent_id,
+                            "selected_agent": "memory",
+                            "agent_name": "Memory Engine",
+                            "model": "memory-v2",
+                            "provider": "local+supabase",
+                            "fallback": False,
+                            "memory_command": command,
+                        },
+                    }
+                )
+
+                print(
+                    "MEMORY_COMMAND_HANDLED:",
+                    command,
+                    flush=True,
+                )
+
+                st.rerun()
+
+            # ====================================================
+            # MEMORY ENGINE V2 - AUTO MEMORY
+            # ====================================================
+
+            if should_consider_auto_memory(final_query):
+
+                try:
+                    auto_memory_result = (
+                        _memory_consolidator.process_text(
+                            profile=current_profile,
+                            user_text=final_query,
+                            source="automatic_chat",
+                        )
+                    )
+
+                    print(
+                        "AUTO_MEMORY_RESULT:",
+                        auto_memory_result.get("action"),
+                        flush=True,
+                    )
+
+                except Exception as auto_memory_error:
+                    print(
+                        "AUTO_MEMORY_ERROR:",
+                        repr(auto_memory_error),
+                        flush=True,
+                    )
+
+            # ====================================================
+            # PIPELINE NORMAL
+            # ====================================================
+
+            st.session_state.conversations[agent_id].append(
+                {
+                    "role": "user",
+                    "content": final_query
+                }
+            )
+
+            with st.spinner(f"{agent['name']} analisando..."):
+                print(
+                    "DEBUG_RUNTIME_REQUEST:",
+                    agent_id,
+                    flush=True
+                )
+
+                try:
+                    runtime_result = execute_agent(
+                        agent_id=agent_id,
+                        history=st.session_state.conversations[agent_id][:-1],
+                        user_query=final_query,
+                        profile=current_profile,
+                    )
+
+                    ans = runtime_result["answer"]
+
+                    selected_agent = runtime_result["selected_agent"]
+                    selected_name = runtime_result["agent_name"]
+                    selected_model = runtime_result["model"]
+
+                    print(
+                        "DEBUG_RUNTIME_SELECTED:",
+                        selected_agent,
+                        selected_name,
+                        selected_model,
+                        flush=True
+                    )
+
+                except Exception as runtime_error:
+                    print(
+                        "DEBUG_RUNTIME_FALLBACK:",
+                        repr(runtime_error),
+                        flush=True
+                    )
+
+                    ans = ask_llm_sync(
+                        agent_id,
+                        st.session_state.conversations[agent_id][:-1],
+                        final_query
+                    )
+
+                    selected_agent = agent_id
+                    selected_name = AGENTS[agent_id]["name"]
+                    selected_model = AGENTS[agent_id]["model"]
+
+            assistant_message = {
+                "role": "assistant",
+                "content": ans,
+                "runtime": {
+                    "requested_agent": agent_id,
+                    "selected_agent": selected_agent,
+                    "agent_name": selected_name,
+                    "model": selected_model,
+                }
+            }
+
+            st.session_state.conversations[agent_id].append(
+                assistant_message
+            )
+
+            pm.save(st.session_state.long_memory)
+
             st.rerun()
