@@ -581,3 +581,148 @@ def rag_stats() -> dict:
         "chunks": collection.count(),
         "embedding_model": EMBEDDING_MODEL_NAME,
     }
+
+# ============================================================
+# SECURE_NAMESPACE_QUERY_V2
+# ============================================================
+
+def query_rag(
+    query: str,
+    n_results: int = 2,
+    profile=None,
+    agent_id=None,
+    namespaces=None,
+) -> list[str]:
+
+    query = str(
+        query
+        or ""
+    ).strip()
+
+
+    if not query:
+
+        return []
+
+
+    normalized_profile = (
+        _normalize_profile(
+            profile
+        )
+    )
+
+
+    # Quando um perfil e fornecido,
+    # namespace torna-se obrigatorio.
+    if normalized_profile:
+
+        allowed = tuple(
+            str(item)
+            for item in (
+                namespaces
+                or ()
+            )
+            if item
+        )
+
+
+        if not allowed:
+
+            return []
+
+
+        collection = (
+            _get_collection()
+        )
+
+
+        if (
+            collection.count()
+            == 0
+        ):
+
+            return []
+
+
+        query_embedding = (
+            _embed_query(
+                query
+            )
+        )
+
+
+        if len(allowed) == 1:
+
+            where = {
+                "namespace":
+                    allowed[0]
+            }
+
+        else:
+
+            where = {
+                "$or": [
+                    {
+                        "namespace":
+                            namespace
+                    }
+                    for namespace
+                    in allowed
+                ]
+            }
+
+
+        try:
+
+            result = (
+                collection.query(
+                    query_embeddings=[
+                        query_embedding
+                    ],
+
+                    n_results=min(
+                        int(
+                            n_results
+                        ),
+                        collection.count(),
+                    ),
+
+                    where=where,
+
+                    include=[
+                        "documents",
+                        "metadatas",
+                        "distances",
+                    ],
+                )
+            )
+
+
+        except Exception:
+
+            # FAIL CLOSED:
+            # nunca faz busca global
+            # se o filtro de privacidade falhar.
+            return []
+
+
+        documents = (
+            result.get(
+                "documents",
+                [[]],
+            )[0]
+            or []
+        )
+
+
+        return [
+            str(document)
+            for document in documents
+            if document
+        ]
+
+
+    # Sem profile, chamadores internos legados
+    # nao recebem RAG global por seguranca.
+    return []
+
