@@ -693,7 +693,7 @@ iframe {
 # ROG AI PREMIUM LAYOUT V4
 # ============================================================
 
-st.markdown("""
+st.html("""
 <style>
 
 :root {
@@ -1240,7 +1240,7 @@ iframe {
 }
 
 </style>
-""", unsafe_allow_html=True)
+""")
 
 
 # --- Sidebar ---
@@ -1252,8 +1252,8 @@ with st.sidebar:
         .upper()
     )
 
-    st.markdown(
-        textwrap.dedent("""
+    st.html(
+        """
         <div class="rog-brand">
             <div class="rog-logo">R</div>
 
@@ -1267,12 +1267,11 @@ with st.sidebar:
                 </div>
             </div>
         </div>
-        """),
-        unsafe_allow_html=True,
-    )
+        """
+)
 
-    st.markdown(
-        textwrap.dedent(f"""
+    st.html(
+        f"""
         <div class="rog-profile">
             <div class="rog-avatar">
                 {profile_initial}
@@ -1289,18 +1288,16 @@ with st.sidebar:
                 </div>
             </div>
         </div>
-        """),
-        unsafe_allow_html=True,
-    )
+        """
+)
 
-    st.markdown(
-        textwrap.dedent("""
+    st.html(
+        """
         <div class="rog-section-label">
             Assistentes
         </div>
-        """),
-        unsafe_allow_html=True,
-    )
+        """
+)
 
     for a_id, a_data in AGENTS.items():
 
@@ -1418,8 +1415,8 @@ if not chat_comp:
 
 # --- Cabecalho do chat ---
 
-st.markdown(
-    textwrap.dedent(f"""
+st.html(
+    f"""
     <div class="rog-topbar">
 
         <div class="rog-agent-info">
@@ -1446,8 +1443,7 @@ st.markdown(
         </div>
 
     </div>
-    """),
-    unsafe_allow_html=True,
+    """
 )
 
 
@@ -1456,8 +1452,8 @@ if not st.session_state.conversations.get(
     [],
 ):
 
-    st.markdown(
-        textwrap.dedent(f"""
+    st.html(
+        f"""
         <div class="rog-welcome">
 
             <div class="rog-welcome-eyebrow">
@@ -1519,9 +1515,8 @@ if not st.session_state.conversations.get(
             </div>
 
         </div>
-        """),
-        unsafe_allow_html=True,
-    )
+        """
+)
 
 
 # --- Historico da conversa ---
