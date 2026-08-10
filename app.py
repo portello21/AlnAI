@@ -688,46 +688,33 @@ iframe {
 
 
 
-# --- Estilos Core (Ocultando o Streamlit generico) ---
-st.markdown('''
-<style>
-:root { --surface: #0a0a0c; --border: rgba(255,255,255,0.08); }
-.stApp { background: var(--surface) !important; color: #e9edef !important; }
-header, footer { display: none !important; }
-.block-container { max-width: 960px !important; padding: 2rem 1rem 120px !important; }
-[data-testid="stSidebar"] { background: #0d1114 !important; border-right: 1px solid var(--border) !important; }
-.chat-msg { display: flex; flex-direction: column; width: 100%; margin-bottom: 20px; }
-.msg-role-user { align-items: flex-end; }
-.msg-role-ai { align-items: flex-start; }
-.msg-bubble-user { background: #005c4b; color: #fff; padding: 12px 16px; border-radius: 16px 16px 2px 16px; max-width: 85%; font-size: 15px; box-shadow: 0 1px 2px rgba(0,0,0,0.2); }
-.msg-bubble-ai { background: transparent; color: #e9edef; padding: 4px 0; max-width: 100%; font-size: 15px; }
-.msg-ai-name { font-size: 12px; font-weight: 600; color: #00a884; margin-bottom: 6px; display: flex; align-items: center; gap: 6px; }
-.chat-header-bar { display: flex; align-items: center; justify-content: space-between; padding: 16px 20px; background: rgba(13, 17, 20, 0.7); border-radius: 16px; border: 1px solid var(--border); margin-bottom: 30px; backdrop-filter: blur(10px); }
-.chat-header-bar h2 { margin: 0; font-size: 18px; display: flex; align-items: center; gap: 8px; color: #fff; }
-.status-dot { width: 8px; height: 8px; background: #00a884; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #00a884; }
-</style>
-''', unsafe_allow_html=True)
-
-
 # ============================================================
-# ROG_AST_FAMILY_UI
+# ROG AI PREMIUM LAYOUT V4
 # ============================================================
 
 st.markdown("""
 <style>
 
 :root {
-    --rog-bg: #070910;
-    --rog-panel: #0d111a;
-    --rog-panel-hover: #131925;
-    --rog-border: rgba(255,255,255,.07);
-    --rog-text: #eef1f6;
-    --rog-muted: #80899a;
-    --rog-accent: #7557f5;
-    --rog-accent-soft: rgba(117,87,245,.13);
-    --rog-green: #2bd9a4;
-}
+    --app-bg: #070910;
+    --sidebar-bg: #090d15;
 
+    --surface: #0f1420;
+    --surface-2: #141a27;
+
+    --border: rgba(255,255,255,.065);
+    --border-hover: rgba(255,255,255,.11);
+
+    --text: #f2f4f8;
+    --muted: #7f899b;
+
+    --accent: #7657f5;
+    --accent-2: #9b83ff;
+    --accent-soft: rgba(118,87,245,.13);
+    --accent-border: rgba(118,87,245,.25);
+
+    --success: #2bd9a4;
+}
 
 /* APP */
 
@@ -735,368 +722,518 @@ html,
 body,
 .stApp,
 [data-testid="stAppViewContainer"] {
-
     background:
         radial-gradient(
-            circle at 52% -18%,
-            rgba(117,87,245,.12),
-            transparent 36%
+            circle at 52% -15%,
+            rgba(118,87,245,.10),
+            transparent 34%
         ),
-        var(--rog-bg)
-        !important;
+        var(--app-bg) !important;
 
-    color:
-        var(--rog-text)
-        !important;
+    color: var(--text) !important;
 }
-
 
 header,
 footer,
-#MainMenu {
-
-    display:
-        none
-        !important;
+#MainMenu,
+[data-testid="stHeader"] {
+    display: none !important;
 }
 
+[data-testid="stAppViewBlockContainer"] {
+    padding-top: 0 !important;
+}
 
 .block-container {
-
-    width:
-        100%
-        !important;
-
-    max-width:
-        1120px
-        !important;
-
-    margin:
-        0 auto
-        !important;
+    width: 100% !important;
+    max-width: 1180px !important;
+    margin: 0 auto !important;
 
     padding:
-        22px
-        clamp(14px,3vw,30px)
-        135px
+        24px
+        clamp(20px,3vw,36px)
+        145px
         !important;
 }
-
 
 /* SIDEBAR */
 
 [data-testid="stSidebar"] {
+    width: 258px !important;
 
     background:
         linear-gradient(
             180deg,
-            #0d111a,
-            #080c12
-        )
-        !important;
+            #0c111b 0%,
+            #080c13 100%
+        ) !important;
 
     border-right:
-        1px solid
-        var(--rog-border)
+        1px solid var(--border)
         !important;
 }
 
-
-[data-testid="stSidebar"] > div {
-
-    padding-top:
-        14px
-        !important;
+[data-testid="stSidebar"] > div:first-child {
+    padding: 18px 13px !important;
 }
 
+/* BRAND */
 
-[data-testid="stSidebar"] button {
-
-    min-height:
-        44px
-        !important;
-
-    border-radius:
-        11px
-        !important;
-
-    border:
-        1px solid
-        var(--rog-border)
-        !important;
-
-    background:
-        rgba(255,255,255,.025)
-        !important;
-
-    color:
-        #dfe4ec
-        !important;
-
-    font-size:
-        11px
-        !important;
-
-    font-weight:
-        600
-        !important;
-
-    justify-content:
-        flex-start
-        !important;
-
-    text-align:
-        left
-        !important;
-
-    padding:
-        0 13px
-        !important;
-
-    margin-bottom:
-        5px
-        !important;
-
-    transition:
-        all .15s ease
-        !important;
+.rog-brand {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 4px 4px 18px;
 }
 
+.rog-logo {
+    width: 38px;
+    height: 38px;
 
-[data-testid="stSidebar"] button:hover {
+    display: flex;
+    align-items: center;
+    justify-content: center;
 
-    background:
-        var(--rog-accent-soft)
-        !important;
-
-    border-color:
-        rgba(117,87,245,.32)
-        !important;
-
-    transform:
-        translateX(2px);
-}
-
-
-/* HEADER */
-
-.chat-header-bar {
-
-    padding:
-        13px 16px
-        !important;
-
-    margin-bottom:
-        24px
-        !important;
-
-    border:
-        1px solid
-        var(--rog-border)
-        !important;
-
-    border-radius:
-        14px
-        !important;
-
-    background:
-        linear-gradient(
-            145deg,
-            rgba(18,23,34,.96),
-            rgba(10,14,21,.96)
-        )
-        !important;
-
-    box-shadow:
-        0 8px 28px
-        rgba(0,0,0,.18)
-        !important;
-}
-
-
-.chat-header-bar h2 {
-
-    margin:
-        0
-        !important;
-
-    font-size:
-        16px
-        !important;
-
-    color:
-        white
-        !important;
-}
-
-
-/* CHAT */
-
-.chat-msg {
-
-    margin-bottom:
-        20px
-        !important;
-}
-
-
-.msg-bubble-user {
-
-    max-width:
-        min(80%,720px)
-        !important;
-
-    padding:
-        11px 15px
-        !important;
+    border-radius: 12px;
 
     background:
         linear-gradient(
             135deg,
-            #654bd2,
-            #513bb1
-        )
-        !important;
+            #6c4ff5,
+            #987cff
+        );
 
-    color:
-        white
-        !important;
+    color: white;
+    font-size: 17px;
+    font-weight: 900;
+
+    box-shadow:
+        0 7px 25px
+        rgba(118,87,245,.26);
+}
+
+.rog-brand-title {
+    color: #f5f6fb;
+    font-size: 16px;
+    font-weight: 800;
+}
+
+.rog-brand-subtitle {
+    color: var(--muted);
+    font-size: 9px;
+    margin-top: 4px;
+    letter-spacing: .25px;
+}
+
+/* PROFILE */
+
+.rog-profile {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+
+    padding: 11px;
+    margin: 0 2px 20px;
+
+    border: 1px solid var(--border);
+    border-radius: 12px;
+
+    background:
+        rgba(255,255,255,.025);
+}
+
+.rog-avatar {
+    width: 31px;
+    height: 31px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border-radius: 10px;
+
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+
+    color: #b8aaff;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.rog-profile-name {
+    color: #e7eaf0;
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.rog-profile-status {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+
+    color: var(--success);
+    font-size: 8px;
+    margin-top: 3px;
+}
+
+.rog-profile-dot {
+    width: 5px;
+    height: 5px;
+
+    border-radius: 999px;
+    background: var(--success);
+
+    box-shadow:
+        0 0 8px
+        rgba(43,217,164,.65);
+}
+
+/* SIDEBAR LABEL */
+
+.rog-section-label {
+    margin: 14px 7px 8px;
+
+    color: #626c7e;
+
+    font-size: 8px;
+    font-weight: 800;
+
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+}
+
+/* SIDEBAR BUTTONS */
+
+[data-testid="stSidebar"] .stButton {
+    margin-bottom: 5px !important;
+}
+
+[data-testid="stSidebar"] button {
+    width: 100% !important;
+    min-height: 43px !important;
+
+    padding: 0 12px !important;
 
     border:
-        1px solid
-        rgba(255,255,255,.06)
+        1px solid transparent
         !important;
 
-    border-radius:
-        16px 16px 4px 16px
+    border-radius: 10px !important;
+
+    background: transparent !important;
+
+    color: #adb5c4 !important;
+
+    font-size: 10.5px !important;
+    font-weight: 600 !important;
+
+    text-align: left !important;
+    justify-content: flex-start !important;
+}
+
+[data-testid="stSidebar"] button:hover {
+    color: white !important;
+
+    background:
+        rgba(255,255,255,.04)
+        !important;
+
+    border-color:
+        var(--border)
+        !important;
+}
+
+[data-testid="stSidebar"] button[kind="primary"] {
+    color: #f0edff !important;
+
+    background:
+        var(--accent-soft)
+        !important;
+
+    border-color:
+        var(--accent-border)
         !important;
 
     box-shadow:
-        0 5px 18px
-        rgba(0,0,0,.15);
+        inset 3px 0 0
+        var(--accent)
+        !important;
 }
 
+/* TOPBAR */
 
-.msg-bubble-ai {
+.rog-topbar {
+    width: 100%;
 
-    color:
-        #dde2ea
-        !important;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+
+    gap: 16px;
+
+    margin-bottom: 26px;
+    padding-bottom: 17px;
+
+    border-bottom:
+        1px solid var(--border);
+}
+
+.rog-agent-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.rog-agent-icon {
+    width: 39px;
+    height: 39px;
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    border-radius: 11px;
+
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-border);
+
+    color: #b9aaff;
+    font-size: 15px;
+}
+
+.rog-agent-title {
+    color: #f5f6f9;
+    font-size: 15px;
+    font-weight: 750;
+}
+
+.rog-agent-description {
+    color: var(--muted);
+    font-size: 9.5px;
+    margin-top: 3px;
+}
+
+.rog-online {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+
+    padding: 6px 10px;
+
+    color: #aaf9df;
+    font-size: 8.5px;
+
+    border:
+        1px solid
+        rgba(43,217,164,.12);
+
+    border-radius: 999px;
+
+    background:
+        rgba(43,217,164,.05);
+}
+
+/* WELCOME */
+
+.rog-welcome {
+    max-width: 720px;
+
+    margin:
+        clamp(65px,11vh,130px)
+        auto 35px;
+
+    text-align: center;
+}
+
+.rog-welcome-eyebrow {
+    color: #9d8aff;
+
+    font-size: 9px;
+    font-weight: 800;
+
+    letter-spacing: 1.1px;
+    text-transform: uppercase;
+
+    margin-bottom: 13px;
+}
+
+.rog-welcome h1 {
+    margin: 0;
+
+    color: white;
 
     font-size:
-        14px
-        !important;
+        clamp(28px,4vw,40px);
 
-    line-height:
-        1.68
-        !important;
+    line-height: 1.08;
+    letter-spacing: -1.25px;
+
+    font-weight: 800;
 }
 
+.rog-welcome p {
+    max-width: 520px;
 
-.msg-ai-name {
+    margin:
+        13px auto 0;
 
-    color:
-        #9e8cff
-        !important;
+    color: var(--muted);
 
-    font-size:
-        10px
-        !important;
-
-    font-weight:
-        700
-        !important;
+    font-size: 13px;
+    line-height: 1.55;
 }
 
+.rog-capabilities {
+    display: grid;
 
-/* CODE / TABLES */
+    grid-template-columns:
+        repeat(4,1fr);
 
-pre {
+    gap: 8px;
+
+    max-width: 760px;
+
+    margin:
+        25px auto 0;
+}
+
+.rog-capability {
+    padding: 11px 12px;
+
+    text-align: left;
+
+    border:
+        1px solid var(--border);
+
+    border-radius: 11px;
+
+    background:
+        rgba(255,255,255,.018);
+}
+
+.rog-capability-title {
+    color: #dce0e8;
+
+    font-size: 9px;
+    font-weight: 700;
+
+    margin-bottom: 4px;
+}
+
+.rog-capability-text {
+    color: #737d8f;
+
+    font-size: 8px;
+    line-height: 1.4;
+}
+
+/* CHAT */
+
+.chat-msg {
+    width: 100%;
+    margin-bottom: 21px;
+}
+
+.msg-role-user {
+    align-items: flex-end;
+}
+
+.msg-role-ai {
+    align-items: flex-start;
+}
+
+.msg-bubble-user {
+    max-width:
+        min(78%,720px);
+
+    padding: 11px 15px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #6348cc,
+            #5037ac
+        );
+
+    color: white;
 
     border-radius:
-        12px
-        !important;
+        15px 15px 4px 15px;
 
-    overflow-x:
-        auto
-        !important;
+    font-size: 13.5px;
+    line-height: 1.5;
 }
 
+.msg-bubble-ai {
+    width: 100%;
+    max-width: 100%;
 
-table {
+    padding: 0;
 
-    display:
-        block;
+    background: transparent;
 
-    overflow-x:
-        auto;
+    color: #dfe3ea;
+
+    font-size: 13.5px;
+    line-height: 1.7;
 }
 
-
-/* INPUT COMPONENT */
+/* COMPONENT */
 
 [data-testid="stCustomComponentV1"] {
-
-    width:
-        100%
-        !important;
-
-    max-width:
-        940px
-        !important;
+    width: 100% !important;
+    max-width: 900px !important;
 
     margin:
         0 auto
         !important;
 }
 
-
 iframe {
-
-    width:
-        100%
-        !important;
-
-    max-width:
-        100%
-        !important;
+    width: 100% !important;
+    max-width: 100% !important;
 }
 
+/* RESPONSIVE */
 
-/* MOBILE */
+@media (max-width:850px) {
 
-@media (max-width:700px) {
+    .rog-capabilities {
+        grid-template-columns:
+            repeat(2,1fr);
+    }
+}
+
+@media (max-width:650px) {
 
     .block-container {
-
         padding:
-            11px
-            9px
+            12px
+            10px
             120px
             !important;
     }
 
+    .rog-online {
+        display: none;
+    }
+
+    .rog-welcome {
+        margin-top: 45px;
+    }
+
+    .rog-capabilities {
+        grid-template-columns:
+            1fr 1fr;
+    }
 
     .msg-bubble-user {
-
-        max-width:
-            94%
-            !important;
+        max-width: 94%;
     }
-
 
     [data-testid="stSidebar"] {
-
         width:
-            min(86vw,300px)
-            !important;
-    }
-
-
-    .chat-header-bar {
-
-        padding:
-            11px 12px
+            min(84vw,290px)
             !important;
     }
 }
@@ -1106,19 +1243,87 @@ iframe {
 
 
 # --- Sidebar ---
+
 with st.sidebar:
-    st.markdown(f'<div style="margin-bottom: 20px;"><div style="font-size:20px; font-weight:800; letter-spacing:1px; margin-bottom:4px;">ROG AI</div><div style="font-size:12px; color:var(--muted); display:flex; align-items:center; gap:6px;"><span class="status-dot"></span> {current_profile}</div></div>', unsafe_allow_html=True)
-    
+
+    profile_initial = (
+        str(current_profile or "U")[0]
+        .upper()
+    )
+
+    st.markdown(
+        """
+        <div class="rog-brand">
+            <div class="rog-logo">R</div>
+
+            <div>
+                <div class="rog-brand-title">
+                    ROG AI
+                </div>
+
+                <div class="rog-brand-subtitle">
+                    PERSONAL INTELLIGENCE
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        f"""
+        <div class="rog-profile">
+            <div class="rog-avatar">
+                {profile_initial}
+            </div>
+
+            <div>
+                <div class="rog-profile-name">
+                    {current_profile}
+                </div>
+
+                <div class="rog-profile-status">
+                    <span class="rog-profile-dot"></span>
+                    Sistema conectado
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="rog-section-label">
+            Assistentes
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
     for a_id, a_data in AGENTS.items():
-        is_active = "? " if a_id == agent_id else ""
-        if st.button(f"{is_active}{a_data['icon']} {a_data['name']}", key=f"nav_{a_id}", use_container_width=True):
-            st.session_state.current_agent = a_id
+
+        is_current = (
+            a_id == agent_id
+        )
+
+        if st.button(
+            f"{a_data['icon']}   {a_data['name']}",
+            key=f"nav_{a_id}",
+            use_container_width=True,
+            type=(
+                "primary"
+                if is_current
+                else "secondary"
+            ),
+        ):
+
+            st.session_state.current_agent = (
+                a_id
+            )
+
             st.rerun()
-            
-    st.markdown("<hr style='border-color: rgba(255,255,255,0.05); margin: 30px 0;'>", unsafe_allow_html=True)
-    if st.button("Sair / Desconectar", use_container_width=True):
-        st.session_state.authenticated = False
-        st.rerun()
+
 
 # --- Funcoes do Pipeline Seguro e Sincrono ---
 def ask_llm_sync(agent_id: str, history: list, user_query: str) -> str:
@@ -1211,17 +1416,112 @@ if not chat_comp:
     st.stop()
 
 # --- Cabecalho do chat ---
+
 st.markdown(
     f"""
-    <div class="chat-header-bar">
-        <h2>{agent['icon']} {agent['name']}</h2>
-        <span style="font-size:12px;color:#8696a0;">
-            <span class="status-dot"></span> Online
-        </span>
+    <div class="rog-topbar">
+
+        <div class="rog-agent-info">
+
+            <div class="rog-agent-icon">
+                {agent["icon"]}
+            </div>
+
+            <div>
+                <div class="rog-agent-title">
+                    {agent["name"]}
+                </div>
+
+                <div class="rog-agent-description">
+                    {agent["description"]}
+                </div>
+            </div>
+
+        </div>
+
+        <div class="rog-online">
+            <span class="rog-profile-dot"></span>
+            Online
+        </div>
+
     </div>
     """,
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )
+
+
+if not st.session_state.conversations.get(
+    agent_id,
+    [],
+):
+
+    st.markdown(
+        f"""
+        <div class="rog-welcome">
+
+            <div class="rog-welcome-eyebrow">
+                ROG AI WORKSPACE
+            </div>
+
+            <h1>
+                Como posso ajudar, {current_profile}?
+            </h1>
+
+            <p>
+                Converse naturalmente com o ROG AI
+                ou escolha um assistente especializado
+                na barra lateral.
+            </p>
+
+            <div class="rog-capabilities">
+
+                <div class="rog-capability">
+                    <div class="rog-capability-title">
+                        ?? Finan?as
+                    </div>
+
+                    <div class="rog-capability-text">
+                        Or?amento, metas e planejamento.
+                    </div>
+                </div>
+
+                <div class="rog-capability">
+                    <div class="rog-capability-title">
+                        ?? Tecnologia
+                    </div>
+
+                    <div class="rog-capability-text">
+                        C?digo, hardware e software.
+                    </div>
+                </div>
+
+                <div class="rog-capability">
+                    <div class="rog-capability-title">
+                        ?? Organiza??o
+                    </div>
+
+                    <div class="rog-capability-text">
+                        Rotina, decis?es e projetos.
+                    </div>
+                </div>
+
+                <div class="rog-capability">
+                    <div class="rog-capability-title">
+                        ???? English
+                    </div>
+
+                    <div class="rog-capability-text">
+                        Conversa??o e desenvolvimento.
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 # --- Historico da conversa ---
 for message in st.session_state.conversations.get(agent_id, []):
