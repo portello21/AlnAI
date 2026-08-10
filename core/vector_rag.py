@@ -417,7 +417,7 @@ def query_rag_detailed(
     return output
 
 
-def query_rag(
+def _query_rag_legacy(
     query: str,
     n_results: int = 2,
     profile: Optional[str] = None,
@@ -435,6 +435,142 @@ def query_rag(
         if item.get("text")
     ]
 
+
+
+
+def query_rag(
+    query: str,
+    n_results: int = 3,
+    profile: str | None = None,
+    agent_id: str | None = None,
+    namespaces: tuple[str, ...] | list[str] | None = None,
+):
+    """
+    Secure RAG wrapper.
+
+    Nunca permite acesso global quando um profile foi fornecido.
+    """
+
+    profile_norm = str(
+        profile
+        or ""
+    ).strip().lower()
+
+
+    allowed_namespaces = tuple(
+        str(item)
+        for item in (
+            namespaces
+            or ()
+        )
+        if item
+    )
+
+
+    if profile_norm:
+
+        # Se a implementa??o Chroma exp?e collection,
+        # fazemos query com filtro de metadados.
+
+        collection_obj = globals().get(
+            "collection"
+        )
+
+
+        if collection_obj is not None:
+
+            try:
+
+                where_filter = None
+
+
+                if len(
+                    allowed_namespaces
+                ) == 1:
+
+                    where_filter = {
+                        "namespace":
+                            allowed_namespaces[0]
+                    }
+
+
+                elif len(
+                    allowed_namespaces
+                ) > 1:
+
+                    where_filter = {
+                        "$or": [
+                            {
+                                "namespace":
+                                    namespace
+                            }
+                            for namespace
+                            in allowed_namespaces
+                        ]
+                    }
+
+
+                else:
+
+                    # Perfil fornecido sem namespace permitido:
+                    # retorna vazio por seguran?a.
+                    return []
+
+
+                result = (
+                    collection_obj.query(
+                        query_texts=[
+                            query
+                        ],
+                        n_results=
+                            n_results,
+                        where=
+                            where_filter,
+                    )
+                )
+
+
+                documents = (
+                    result.get(
+                        "documents",
+                        []
+                    )
+                    or []
+                )
+
+
+                if (
+                    documents
+                    and isinstance(
+                        documents[0],
+                        list,
+                    )
+                ):
+
+                    return documents[0]
+
+
+                return documents
+
+
+            except Exception:
+
+                # Falha fechada:
+                # nunca cai para busca global.
+                return []
+
+
+        # Sem collection identific?vel,
+        # n?o fazemos busca global.
+        return []
+
+
+    # Chamadas legadas sem perfil continuam funcionando
+    # apenas para compatibilidade interna.
+    return _query_rag_legacy(
+        query,
+        n_results=n_results,
+    )
 
 def rag_stats() -> dict:
     collection = _get_collection()
