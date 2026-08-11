@@ -15,6 +15,4 @@ duckduckgo-search
 google-api-python-client
 plotly
 psutil
-
-# Streamlit Cloud rebuild 2026-08-10
 torchvision
