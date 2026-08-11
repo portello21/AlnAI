@@ -98,52 +98,318 @@ def should_consider_auto_memory(text: str) -> bool:
 
 st.set_page_config(page_title="ROG AI - Unified Core", page_icon="ROG", layout="wide", initial_sidebar_state="expanded")
 
-# --- Autenticacao Segura (Sem dicts hardcoded p/ bypass real) ---
-# --- Sessao / Auto-login local ---
-if "authenticated" not in st.session_state:
-    st.session_state.authenticated = False
+# ============================================================
+# AUTHENTICATION - SESSION ONLY / FAIL CLOSED
+# ============================================================
 
-if "current_profile" not in st.session_state:
-    st.session_state.current_profile = None
+ALLOWED_PROFILES = (
+    "Allan",
+    "Beatriz",
+    "Natan",
+    "Tainan",
+)
 
-# Em ambiente local, entra automaticamente no perfil Allan.
-# Quando publicarmos o ROG AI, este comportamento sera substituido
-# por autenticacao persistente segura.
-_is_local = os.environ.get("ROG_LOCAL_AUTOLOGIN", "1") == "1"
 
-if _is_local and not st.session_state.authenticated:
-    st.session_state.authenticated = True
-    st.session_state.current_profile = "Allan"
+def verify_auth(
+    username: str,
+    input_password: str,
+) -> bool:
 
-def verify_auth(username, input_pass):
-    try:
-        secret_key = f"{username.upper()}_PASSWORD"
-        real_pass = st.secrets[secret_key]
-        return hmac.compare_digest(input_pass.encode('utf-8'), real_pass.encode('utf-8'))
-    except KeyError:
+    if (
+        username
+        not in ALLOWED_PROFILES
+    ):
         return False
 
+
+    secret_key = (
+        f"{username.upper()}_PASSWORD"
+    )
+
+
+    try:
+
+        real_password = str(
+            st.secrets[
+                secret_key
+            ]
+        )
+
+    except Exception:
+
+        return False
+
+
+    if (
+        not real_password
+        or not input_password
+    ):
+        return False
+
+
+    return hmac.compare_digest(
+        input_password.encode(
+            "utf-8"
+        ),
+        real_password.encode(
+            "utf-8"
+        ),
+    )
+
+
+if (
+    "authenticated"
+    not in st.session_state
+):
+
+    st.session_state.authenticated = False
+
+
+if (
+    "current_profile"
+    not in st.session_state
+):
+
+    st.session_state.current_profile = None
+
+
+# Seguran?a:
+# nunca aceite identidade por URL.
+if "auth" in st.query_params:
+
+    try:
+        del st.query_params["auth"]
+    except Exception:
+        pass
+
+
+# Estado inconsistente vira logout.
+if (
+    st.session_state.authenticated
+    and st.session_state.current_profile
+    not in ALLOWED_PROFILES
+):
+
+    st.session_state.authenticated = False
+    st.session_state.current_profile = None
+
+
 if not st.session_state.authenticated:
-    st.markdown("""<style>
-        .stApp { background: #080a0c; color:#e9edef; }
-        .login-box { max-width: 360px; margin: 12vh auto; padding: 40px; background: #0d1114; border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; box-shadow: 0 20px 40px rgba(0,0,0,0.5); text-align: center; }
-        .login-mark { width: 56px; height: 56px; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; border-radius: 14px; background: rgba(0, 168, 132, 0.1); border: 1px solid rgba(0,168,132,0.3); color: #00a884; font-size: 24px; font-weight: 800; }
-        </style>""", unsafe_allow_html=True)
-    st.markdown('<div class="login-box"><div class="login-mark">R</div><h2 style="margin:0 0 5px;font-size:22px;">ROG AI</h2><p style="color:#8696a0;font-size:13px;margin-bottom:30px;">Acesso Restrito</p>', unsafe_allow_html=True)
-    
-    with st.form("auth_form"):
-        p_choice = st.selectbox("Perfil", ["Allan", "Beatriz", "Natan", "Tainan"], label_visibility="collapsed")
-        i_pass = st.text_input("Senha", type="password", placeholder="Master Password", label_visibility="collapsed")
-        submitted = st.form_submit_button("Conectar", use_container_width=True)
+
+    # remove dados sensiveis que tenham sobrado
+    # de alguma sessao anterior.
+    st.session_state.current_profile = None
+
+    sensitive_keys = (
+        "conversations",
+        "long_memory",
+        "current_agent",
+        "last_chat_component_event_id",
+    )
+
+    for key in sensitive_keys:
+
+        st.session_state.pop(
+            key,
+            None,
+        )
+
+
+    st.html(
+        """
+        <style>
+
+        [data-testid="stSidebar"] {
+            display: none !important;
+        }
+
+        .block-container {
+            max-width: 430px !important;
+            padding-top: 9vh !important;
+        }
+
+        .rog-login {
+            margin: 0 auto 22px;
+            text-align: center;
+        }
+
+        .rog-login-logo {
+            width: 54px;
+            height: 54px;
+
+            display: flex;
+            align-items: center;
+            justify-content: center;
+
+            margin: 0 auto 15px;
+
+            border-radius: 15px;
+
+            background:
+                linear-gradient(
+                    135deg,
+                    #6c4ff5,
+                    #967cff
+                );
+
+            color: white;
+
+            font-size: 21px;
+            font-weight: 900;
+
+            box-shadow:
+                0 8px 30px
+                rgba(118,87,245,.25);
+        }
+
+        .rog-login-title {
+            color: #f5f6fa;
+
+            font-size: 24px;
+            font-weight: 800;
+
+            letter-spacing: -.5px;
+        }
+
+        .rog-login-sub {
+            margin-top: 6px;
+
+            color: #778195;
+
+            font-size: 11px;
+        }
+
+        </style>
+
+        <div class="rog-login">
+
+            <div class="rog-login-logo">
+                R
+            </div>
+
+            <div class="rog-login-title">
+                ROG AI
+            </div>
+
+            <div class="rog-login-sub">
+                Acesso privado ? selecione seu perfil
+            </div>
+
+        </div>
+        """
+    )
+
+
+    with st.form(
+        "secure_login_form",
+        clear_on_submit=False,
+    ):
+
+        profile_choice = (
+            st.selectbox(
+                "Perfil",
+                ALLOWED_PROFILES,
+            )
+        )
+
+
+        input_password = (
+            st.text_input(
+                "Senha",
+                type="password",
+                placeholder=
+                    "Digite sua senha",
+            )
+        )
+
+
+        submitted = (
+            st.form_submit_button(
+                "Entrar",
+                use_container_width=True,
+                type="primary",
+            )
+        )
+
+
         if submitted:
-            if verify_auth(p_choice, i_pass):
-                st.session_state.authenticated = True
-                st.session_state.current_profile = p_choice
+
+            if verify_auth(
+                profile_choice,
+                input_password,
+            ):
+
+                st.session_state.authenticated = (
+                    True
+                )
+
+                st.session_state.current_profile = (
+                    profile_choice
+                )
+
+                # Garante workspace novo
+                # para o usuario autenticado.
+                st.session_state.pop(
+                    "conversations",
+                    None,
+                )
+
+                st.session_state.pop(
+                    "long_memory",
+                    None,
+                )
+
                 st.rerun()
+
+
             else:
-                st.error("Credenciais invalidas ou nao configuradas em secrets.toml.")
-    st.markdown('</div>', unsafe_allow_html=True)
+
+                st.error(
+                    "Perfil ou senha inv?lidos."
+                )
+
+
+    st.caption(
+        "A sess?o fica ativa somente neste navegador enquanto esta sess?o do app estiver aberta."
+    )
+
     st.stop()
+
+
+
+
+def secure_logout():
+
+    keys_to_clear = (
+        "authenticated",
+        "current_profile",
+        "conversations",
+        "conversations_by_profile",
+        "long_memory",
+        "memory_by_profile",
+        "current_agent",
+        "last_chat_component_event_id",
+        "processed_events",
+    )
+
+
+    for key in keys_to_clear:
+
+        st.session_state.pop(
+            key,
+            None,
+        )
+
+
+    st.session_state.authenticated = False
+    st.session_state.current_profile = None
+
+
+    try:
+        st.query_params.clear()
+    except Exception:
+        pass
+
 
 # --- Arquitetura Global ---
 AGENTS = {
