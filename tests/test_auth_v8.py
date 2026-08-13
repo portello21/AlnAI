@@ -1,7 +1,12 @@
 import time
 
-from core.auth_v8 import ALLOWED_PROFILES, issue_device_token, normalize_profile, verify_device_token
-
+from core.auth_v8 import (
+    ALLOWED_PROFILES,
+    issue_device_token,
+    normalize_profile,
+    verify_device_token,
+    verify_password,
+)
 
 SECRET = "x" * 64
 
@@ -9,17 +14,26 @@ SECRET = "x" * 64
 def test_real_family_profile_names_only():
     assert ALLOWED_PROFILES == ("Allan", "Beatriz", "Natan", "Tainan")
     assert normalize_profile("natan") == "Natan"
-    assert normalize_profile("tainan") == "Tainan"
+    assert normalize_profile("TAINAN") == "Tainan"
     assert normalize_profile("Irmao 1") == ""
     assert normalize_profile("Irmao 2") == ""
 
 
+def test_password_verification_is_fail_closed():
+    secrets_map = {"ALLAN_PASSWORD": "correct-horse"}
+    assert verify_password("Allan", "correct-horse", secrets_map)
+    assert not verify_password("Allan", "wrong", secrets_map)
+    assert not verify_password("Natan", "anything", secrets_map)
+    assert not verify_password("Unknown", "anything", secrets_map)
+
+
 def test_device_token_round_trip():
-    token = issue_device_token("Allan", SECRET, ttl_days=90, device_id="browser-1")
-    identity = verify_device_token(token, SECRET)
+    now = int(time.time())
+    token = issue_device_token("Allan", SECRET, ttl_days=90, device_id="browser-device-123", now=now)
+    identity = verify_device_token(token, SECRET, now=now + 1)
     assert identity is not None
     assert identity.profile == "Allan"
-    assert identity.device_id == "browser-1"
+    assert identity.device_id == "browser-device-123"
 
 
 def test_tampered_token_is_rejected():
@@ -35,5 +49,22 @@ def test_wrong_secret_is_rejected():
 
 
 def test_expired_token_is_rejected():
-    token = issue_device_token("Tainan", SECRET, ttl_days=1)
-    assert verify_device_token(token, SECRET, now=int(time.time()) + 2 * 86400) is None
+    now = int(time.time())
+    token = issue_device_token("Tainan", SECRET, ttl_days=1, now=now)
+    assert verify_device_token(token, SECRET, now=now + 2 * 86400) is None
+
+
+def test_future_issued_token_is_rejected():
+    now = int(time.time())
+    token = issue_device_token("Allan", SECRET, now=now + 3600)
+    assert verify_device_token(token, SECRET, now=now) is None
+
+
+def test_short_signing_secret_is_rejected():
+    try:
+        issue_device_token("Allan", "short")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("short signing secret was accepted")
+    assert verify_device_token("anything", "short") is None
