@@ -1,4 +1,4 @@
-﻿# Python
+# Python
 __pycache__/
 *.py[cod]
 .pytest_cache/
@@ -9,11 +9,19 @@ venv/
 .env
 .env.*
 .streamlit/secrets.toml
+*secrets*.toml
 
 # Databases / local data
 *.db
 *.sqlite
 *.sqlite3
+data/
+chroma/
+
+# Personal exports / financial samples
+extrato*.txt
+statement*.txt
+*_private.*
 
 # Backups
 *backup*
