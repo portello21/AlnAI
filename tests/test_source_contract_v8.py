@@ -21,7 +21,7 @@ def test_no_fake_family_names_in_active_app():
 
 def test_chat_has_runtime_pipeline_and_safe_fallback():
     assert "execute_agent(" in SHELL
-    assert "Falha temporária" in SHELL
+    assert "falha temporária" in SHELL.lower()
     assert "busy" in SHELL
 
 
