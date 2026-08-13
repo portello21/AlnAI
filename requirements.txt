@@ -17,4 +17,6 @@ plotly
 psutil
 torchvision
 extra-streamlit-components
+pypdf
+python-docx
 pytest
