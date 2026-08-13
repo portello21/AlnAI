@@ -7,7 +7,7 @@ import streamlit as st
 
 try:
     import extra_streamlit_components as stx
-except Exception:  # pragma: no cover - graceful runtime fallback
+except Exception:  # pragma: no cover
     stx = None
 
 from core.agent_runtime import AGENTS as RUNTIME_AGENTS, execute_agent
@@ -20,6 +20,7 @@ from core.auth_v8 import (
     verify_password,
 )
 from core.database import PersistenceManager
+from core.memory_service_v8 import FamilyMemoryService
 from core.profile_access import allowed_namespaces, write_namespace
 from core.ui_v8 import (
     AGENT_META,
@@ -29,18 +30,22 @@ from core.ui_v8 import (
     render_profile,
     render_welcome,
 )
-from core.vector_rag import add_document_to_rag, query_rag
-from providers.audio import transcribe_audio_bytes
 
 LOGGER = logging.getLogger("rog.v8")
 TRUST_COOKIE_NAME = "rog_ai_v8_device"
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_DIRECT_CONTEXT_CHARS = 12_000
+MAX_AUTH_RESTORE_ATTEMPTS = 3
 
 
 @st.cache_resource
 def _persistence() -> PersistenceManager:
     return PersistenceManager()
+
+
+@st.cache_resource
+def _family_memory() -> FamilyMemoryService:
+    return FamilyMemoryService()
 
 
 def _cookie_secret() -> str:
@@ -66,12 +71,12 @@ def init_state() -> None:
     st.session_state.setdefault("current_agent", "orchestrator")
     st.session_state.setdefault("conversations_by_profile", {})
     st.session_state.setdefault("busy", False)
-    st.session_state.setdefault("auth_restore_attempted", False)
+    st.session_state.setdefault("auth_restore_attempts", 0)
     st.session_state.setdefault("shared_finance_upload", False)
 
 
-def clear_private_state(*, keep_restore_flag: bool = True) -> None:
-    restore_flag = st.session_state.get("auth_restore_attempted", False) if keep_restore_flag else False
+def clear_private_state(*, preserve_restore_attempts: bool = True) -> None:
+    attempts = int(st.session_state.get("auth_restore_attempts", 0)) if preserve_restore_attempts else 0
     for key in (
         "authenticated",
         "current_profile",
@@ -89,13 +94,16 @@ def clear_private_state(*, keep_restore_flag: bool = True) -> None:
     st.session_state.current_profile = None
     st.session_state.current_agent = "orchestrator"
     st.session_state.busy = False
-    st.session_state.auth_restore_attempted = restore_flag
+    st.session_state.auth_restore_attempts = attempts
 
 
 def _restore_trusted_device(manager) -> None:
-    if st.session_state.authenticated or st.session_state.auth_restore_attempted:
+    if st.session_state.authenticated:
         return
-    st.session_state.auth_restore_attempted = True
+    attempts = int(st.session_state.get("auth_restore_attempts", 0))
+    if attempts >= MAX_AUTH_RESTORE_ATTEMPTS:
+        return
+    st.session_state.auth_restore_attempts = attempts + 1
     secret = _cookie_secret()
     if not manager or not secret:
         return
@@ -103,11 +111,14 @@ def _restore_trusted_device(manager) -> None:
         token = manager.get(TRUST_COOKIE_NAME)
     except Exception:
         token = None
-    identity = verify_device_token(token or "", secret)
+    if not token:
+        return
+    identity = verify_device_token(token, secret)
     if identity and identity.profile in ALLOWED_PROFILES:
         st.session_state.authenticated = True
         st.session_state.current_profile = identity.profile
         st.session_state.current_agent = "orchestrator"
+        st.session_state.auth_restore_attempts = MAX_AUTH_RESTORE_ATTEMPTS
 
 
 def _trust_current_device(manager, profile: str) -> None:
@@ -132,7 +143,8 @@ def _forget_device(manager) -> None:
             manager.delete(TRUST_COOKIE_NAME, key="rog_v8_cookie_delete")
         except Exception as exc:
             LOGGER.warning("trusted-device cookie delete failed: %s", type(exc).__name__)
-    clear_private_state(keep_restore_flag=True)
+    clear_private_state(preserve_restore_attempts=False)
+    st.session_state.auth_restore_attempts = MAX_AUTH_RESTORE_ATTEMPTS
 
 
 def render_login(manager) -> None:
@@ -149,7 +161,7 @@ def render_login(manager) -> None:
             st.session_state.authenticated = True
             st.session_state.current_profile = profile
             st.session_state.current_agent = "orchestrator"
-            st.session_state.auth_restore_attempted = True
+            st.session_state.auth_restore_attempts = MAX_AUTH_RESTORE_ATTEMPTS
             _trust_current_device(manager, profile)
             st.rerun()
         st.error("Perfil ou senha inválidos.")
@@ -222,7 +234,10 @@ def render_sidebar(profile: str, agent_id: str, conversations: dict[str, list], 
             st.toggle(
                 "Financeiro compartilhado",
                 key="shared_finance_upload",
-                help="Quando ativo, novos documentos enviados ao Finance Agent entram apenas no espaço financeiro compartilhado Allan ↔ Beatriz.",
+                help=(
+                    "Quando ativo, documentos e comandos explícitos de memória "
+                    "usam apenas o espaço financeiro compartilhado Allan ↔ Beatriz."
+                ),
             )
         else:
             st.session_state.shared_finance_upload = False
@@ -237,6 +252,8 @@ def render_sidebar(profile: str, agent_id: str, conversations: dict[str, list], 
 
 
 def _process_files(profile: str, agent_id: str, files: list) -> tuple[list[str], list[str]]:
+    from core.vector_rag import add_document_to_rag
+
     notes: list[str] = []
     direct_context: list[str] = []
     namespace = write_namespace(
@@ -304,6 +321,7 @@ def _submission_parts(submission) -> tuple[str, list, object | None]:
 def process_submission(profile: str, agent_id: str, conversations: dict[str, list], submission) -> None:
     if st.session_state.busy:
         return
+
     history = conversations[agent_id]
     text, files, audio = _submission_parts(submission)
     display_parts: list[str] = []
@@ -315,6 +333,24 @@ def process_submission(profile: str, agent_id: str, conversations: dict[str, lis
         display_parts.append(clean)
         query_parts.append(clean)
 
+    # Explicit memory commands are processed before the LLM and never leak across scopes.
+    if clean and not files and audio is None:
+        memory_result = _family_memory().process_explicit_command(
+            profile,
+            agent_id,
+            clean,
+            shared_finance=bool(st.session_state.shared_finance_upload),
+        )
+        if memory_result.handled:
+            history.append({"role": "user", "content": clean})
+            history.append({
+                "role": "assistant",
+                "content": memory_result.message,
+                "runtime": {"agent_name": "Memory Engine", "model": "memory-v8", "success": memory_result.success},
+            })
+            persist_conversations(profile, conversations)
+            st.rerun()
+
     if files:
         file_notes, file_context = _process_files(profile, agent_id, files)
         display_parts.extend(file_notes)
@@ -324,10 +360,14 @@ def process_submission(profile: str, agent_id: str, conversations: dict[str, lis
 
     if audio is not None:
         try:
+            from providers.audio import transcribe_audio_bytes
+
             transcript = transcribe_audio_bytes(audio.getvalue()).strip()
             if transcript:
                 display_parts.append(f"🎙️ {transcript}")
                 query_parts.append(transcript)
+            else:
+                display_parts.append("🎙️ O áudio não pôde ser transcrito.")
         except Exception as exc:
             LOGGER.warning("audio transcription failed: %s", type(exc).__name__)
             display_parts.append("🎙️ O áudio não pôde ser transcrito.")
@@ -337,6 +377,8 @@ def process_submission(profile: str, agent_id: str, conversations: dict[str, lis
         return
 
     try:
+        from core.vector_rag import query_rag
+
         rag_docs = query_rag(
             query,
             n_results=3,
@@ -348,6 +390,10 @@ def process_submission(profile: str, agent_id: str, conversations: dict[str, lis
             extra_context_parts.append("CONTEXTO DE DOCUMENTOS RELEVANTES:\n" + "\n\n".join(rag_docs))
     except Exception as exc:
         LOGGER.warning("secure RAG query failed: %s", type(exc).__name__)
+
+    shared_memory_context = _family_memory().shared_finance_context(profile, agent_id, query)
+    if shared_memory_context:
+        extra_context_parts.append(shared_memory_context)
 
     user_display = "\n\n".join(display_parts) or query
     history.append({"role": "user", "content": user_display})
@@ -384,7 +430,7 @@ def run() -> None:
     _restore_trusted_device(manager)
 
     if not st.session_state.authenticated or st.session_state.current_profile not in ALLOWED_PROFILES:
-        clear_private_state(keep_restore_flag=True)
+        clear_private_state(preserve_restore_attempts=True)
         render_login(manager)
         st.stop()
 
