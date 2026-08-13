@@ -7,28 +7,9 @@ from typing import Optional
 
 from providers.ocr import extract_text_tesseract
 
-
-TEXT_EXTENSIONS = {
-    ".txt",
-    ".md",
-    ".markdown",
-    ".log",
-    ".py",
-    ".ps1",
-    ".yaml",
-    ".yml",
-    ".toml",
-}
-
-IMAGE_EXTENSIONS = {
-    ".png",
-    ".jpg",
-    ".jpeg",
-    ".webp",
-    ".bmp",
-    ".tif",
-    ".tiff",
-}
+TEXT_EXTENSIONS = {".txt", ".md", ".markdown", ".log", ".py", ".ps1", ".yaml", ".yml", ".toml"}
+IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+MAX_EXTRACTED_CHARS = 250_000
 
 
 def calculate_file_sha256(file_bytes: bytes) -> str:
@@ -36,67 +17,63 @@ def calculate_file_sha256(file_bytes: bytes) -> str:
 
 
 def decode_text_bytes(file_bytes: bytes) -> str:
-    encodings = (
-        "utf-8-sig",
-        "utf-8",
-        "cp1252",
-        "latin-1",
-    )
-
-    for encoding in encodings:
+    for encoding in ("utf-8-sig", "utf-8", "cp1252", "latin-1"):
         try:
             return file_bytes.decode(encoding)
         except UnicodeDecodeError:
             continue
+    return file_bytes.decode("utf-8", errors="replace")
 
-    return file_bytes.decode(
-        "utf-8",
-        errors="replace",
-    )
+
+def _cap(text: str) -> str:
+    return (text or "").strip()[:MAX_EXTRACTED_CHARS]
 
 
 def extract_csv_text(file_bytes: bytes) -> str:
     raw = decode_text_bytes(file_bytes)
-
     try:
-        reader = csv.reader(io.StringIO(raw))
-        rows = []
-
-        for row in reader:
-            rows.append(" | ".join(str(cell) for cell in row))
-
-        return "\n".join(rows).strip()
-
+        return "\n".join(" | ".join(str(cell) for cell in row) for row in csv.reader(io.StringIO(raw))).strip()
     except Exception:
         return raw.strip()
 
 
 def extract_json_text(file_bytes: bytes) -> str:
     raw = decode_text_bytes(file_bytes)
-
     try:
-        data = json.loads(raw)
-
-        return json.dumps(
-            data,
-            ensure_ascii=False,
-            indent=2,
-        )
-
+        return json.dumps(json.loads(raw), ensure_ascii=False, indent=2)
     except Exception:
         return raw.strip()
 
 
-def extract_document_text(
-    file_bytes: bytes,
-    filename: str,
-    mime_type: Optional[str] = None,
-) -> dict:
+def extract_pdf_text(file_bytes: bytes) -> str:
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(file_bytes))
+    parts = []
+    for page in reader.pages[:200]:
+        value = page.extract_text() or ""
+        if value.strip():
+            parts.append(value)
+        if sum(len(x) for x in parts) >= MAX_EXTRACTED_CHARS:
+            break
+    return _cap("\n\n".join(parts))
 
-    filename = filename or "arquivo"
+
+def extract_docx_text(file_bytes: bytes) -> str:
+    from docx import Document
+    document = Document(io.BytesIO(file_bytes))
+    parts = [p.text for p in document.paragraphs if p.text.strip()]
+    for table in document.tables:
+        for row in table.rows:
+            parts.append(" | ".join(cell.text.strip() for cell in row.cells))
+            if sum(len(x) for x in parts) >= MAX_EXTRACTED_CHARS:
+                return _cap("\n".join(parts))
+    return _cap("\n".join(parts))
+
+
+def extract_document_text(file_bytes: bytes, filename: str, mime_type: Optional[str] = None) -> dict:
+    filename = Path(filename or "arquivo").name
     extension = Path(filename).suffix.lower()
     mime_type = (mime_type or "").lower()
-
     result = {
         "filename": filename,
         "extension": extension,
@@ -107,57 +84,30 @@ def extract_document_text(
         "success": False,
         "error": None,
     }
-
     try:
         if extension in TEXT_EXTENSIONS:
-            result["text"] = decode_text_bytes(file_bytes).strip()
-            result["method"] = "text"
-
+            result["text"], result["method"] = _cap(decode_text_bytes(file_bytes)), "text"
         elif extension == ".csv":
-            result["text"] = extract_csv_text(file_bytes)
-            result["method"] = "csv"
-
+            result["text"], result["method"] = _cap(extract_csv_text(file_bytes)), "csv"
         elif extension == ".json":
-            result["text"] = extract_json_text(file_bytes)
-            result["method"] = "json"
-
+            result["text"], result["method"] = _cap(extract_json_text(file_bytes)), "json"
         elif extension in IMAGE_EXTENSIONS or mime_type.startswith("image/"):
             ocr_text = extract_text_tesseract(file_bytes)
-
             if ocr_text.lower().startswith("erro no ocr"):
                 raise RuntimeError(ocr_text)
-
-            result["text"] = ocr_text.strip()
-            result["method"] = "tesseract"
-
-        elif extension == ".pdf":
-            result["error"] = (
-                "PDF detectado. Extracao PDF sera habilitada "
-                "na proxima etapa."
-            )
-            return result
-
-        elif extension == ".docx":
-            result["error"] = (
-                "DOCX detectado. Extracao DOCX sera habilitada "
-                "na proxima etapa."
-            )
-            return result
-
+            result["text"], result["method"] = _cap(ocr_text), "tesseract"
+        elif extension == ".pdf" or mime_type == "application/pdf":
+            result["text"], result["method"] = extract_pdf_text(file_bytes), "pypdf"
+        elif extension == ".docx" or "wordprocessingml" in mime_type:
+            result["text"], result["method"] = extract_docx_text(file_bytes), "python-docx"
         else:
-            result["error"] = (
-                f"Formato ainda nao suportado: "
-                f"{extension or mime_type or 'desconhecido'}"
-            )
+            result["error"] = f"Formato não suportado: {extension or mime_type or 'desconhecido'}"
             return result
-
-        if not result["text"]:
-            result["error"] = "Nenhum texto foi extraido."
+        if not result["text"].strip():
+            result["error"] = "Nenhum texto foi extraído."
             return result
-
         result["success"] = True
         return result
-
     except Exception as exc:
-        result["error"] = str(exc)
+        result["error"] = f"{type(exc).__name__}: {exc}"
         return result
