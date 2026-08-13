@@ -50,6 +50,7 @@ def main() -> int:
         "tests/test_auth_v8.py",
         "tests/test_profile_access_v8.py",
         "tests/test_security_contract_v8.py",
+        "tests/test_security_v8.py",
         "tests/test_ui_contract_v8.py",
         "tests/test_source_contract_v8.py",
         "tests/test_apptest_ui_v8.py",
