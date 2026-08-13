@@ -22,7 +22,7 @@ jobs:
       - name: Install lightweight validation dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest streamlit httpx requests
+          pip install pytest streamlit httpx requests supabase
       - name: Compile and run V8 contracts
         run: python scripts/validate_v8.py
       - name: Run V9 provider and isolation contracts
