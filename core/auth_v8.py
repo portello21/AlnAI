@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Mapping
 
 ALLOWED_PROFILES = ("Allan", "Beatriz", "Natan", "Tainan")
-TOKEN_VERSION = 1
+TOKEN_VERSION = 2
 DEFAULT_DEVICE_TTL_DAYS = 90
 
 
@@ -41,6 +41,19 @@ def verify_password(profile: str, candidate: str, secrets_map: Mapping[str, obje
     return bool(expected) and hmac.compare_digest(candidate.encode("utf-8"), expected.encode("utf-8"))
 
 
+def credential_version(secret: str, password: str) -> str:
+    """Opaque server-side tag; changing a password invalidates existing device tokens."""
+    secret = str(secret or "")
+    password = str(password or "")
+    if len(secret) < 32 or not password:
+        return ""
+    return hmac.new(
+        secret.encode("utf-8"),
+        ("credential-v2:" + password).encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()[:32]
+
+
 def _b64url(data: bytes) -> str:
     return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
 
@@ -49,7 +62,15 @@ def _unb64url(data: str) -> bytes:
     return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
 
 
-def issue_device_token(profile: str, secret: str, *, ttl_days: int = DEFAULT_DEVICE_TTL_DAYS, device_id: str | None = None, now: int | None = None) -> str:
+def issue_device_token(
+    profile: str,
+    secret: str,
+    *,
+    ttl_days: int = DEFAULT_DEVICE_TTL_DAYS,
+    device_id: str | None = None,
+    now: int | None = None,
+    credential_tag: str = "",
+) -> str:
     profile = normalize_profile(profile)
     secret = str(secret or "")
     if not profile:
@@ -63,13 +84,20 @@ def issue_device_token(profile: str, secret: str, *, ttl_days: int = DEFAULT_DEV
         "device_id": device_id or secrets.token_urlsafe(18),
         "iat": issued,
         "exp": issued + max(1, int(ttl_days)) * 86400,
+        "cv": str(credential_tag or ""),
     }
     encoded = _b64url(json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
     signature = hmac.new(secret.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).digest()
     return f"{encoded}.{_b64url(signature)}"
 
 
-def verify_device_token(token: str, secret: str, *, now: int | None = None) -> DeviceIdentity | None:
+def verify_device_token(
+    token: str,
+    secret: str,
+    *,
+    now: int | None = None,
+    expected_credential_tag: str | None = None,
+) -> DeviceIdentity | None:
     secret = str(secret or "")
     if len(secret) < 32:
         return None
@@ -86,6 +114,7 @@ def verify_device_token(token: str, secret: str, *, now: int | None = None) -> D
         issued_at = int(payload.get("iat", 0))
         expires_at = int(payload.get("exp", 0))
         device_id = str(payload.get("device_id", ""))
+        credential_tag = str(payload.get("cv", ""))
         current = int(time.time() if now is None else now)
         if not profile or len(device_id) < 8:
             return None
@@ -93,6 +122,10 @@ def verify_device_token(token: str, secret: str, *, now: int | None = None) -> D
             return None
         if expires_at <= current or expires_at <= issued_at:
             return None
+        if expected_credential_tag is not None:
+            expected_tag = str(expected_credential_tag or "")
+            if not expected_tag or not hmac.compare_digest(credential_tag, expected_tag):
+                return None
         return DeviceIdentity(profile=profile, device_id=device_id, expires_at=expires_at)
     except Exception:
         return None
