@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import compileall
+import py_compile
 import subprocess
 import sys
 from pathlib import Path
@@ -13,31 +13,35 @@ def run(cmd: list[str]) -> None:
     subprocess.run(cmd, cwd=ROOT, check=True)
 
 
+def active_python_files() -> list[Path]:
+    roots = [ROOT / "app.py", ROOT / "core", ROOT / "agents", ROOT / "providers", ROOT / "tools"]
+    files: list[Path] = []
+    for root in roots:
+        if root.is_file():
+            files.append(root)
+        elif root.is_dir():
+            files.extend(
+                p for p in root.rglob("*.py")
+                if "backup" not in p.name.lower()
+                and "__pycache__" not in p.parts
+            )
+    return sorted(set(files))
+
+
 def main() -> int:
     print("=== ROG AI V8 VALIDATION ===")
+    files = active_python_files()
+    for path in files:
+        py_compile.compile(str(path), doraise=True)
+    print(f"ACTIVE_SOURCE_COMPILE_OK ({len(files)} files)")
 
-    active = [
-        ROOT / "app.py",
-        ROOT / "core",
-        ROOT / "agents",
-        ROOT / "providers",
-        ROOT / "tools",
-    ]
-
-    for path in active:
-        if path.is_file():
-            compile(path.read_text(encoding="utf-8-sig"), str(path), "exec")
-        elif path.is_dir():
-            ok = compileall.compile_dir(
-                str(path),
-                quiet=1,
-                rx=r".*backup.*|.*__pycache__.*",
-            )
-            if not ok:
-                raise SystemExit(f"Compile failure: {path}")
-
-    print("ACTIVE_SOURCE_COMPILE_OK")
-    run([sys.executable, "-m", "pytest", "-q", "tests/test_profile_access_v8.py", "tests/test_security_contract_v8.py", "tests/test_ui_contract_v8.py"])
+    run([
+        sys.executable, "-m", "pytest", "-q",
+        "tests/test_auth_v8.py",
+        "tests/test_profile_access_v8.py",
+        "tests/test_security_contract_v8.py",
+        "tests/test_ui_contract_v8.py",
+    ])
     print("V8_CONTRACT_TESTS_OK")
     return 0
 
