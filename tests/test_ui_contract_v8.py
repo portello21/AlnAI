@@ -14,14 +14,8 @@ def test_family_names_are_real_names():
 
 def test_all_expected_agents_exist():
     assert set(AGENT_META) == {
-        "orchestrator",
-        "personal",
-        "finance",
-        "tech",
-        "coach",
-        "business",
-        "english",
-        "documents",
+        "orchestrator", "personal", "finance", "tech",
+        "coach", "business", "english", "document",
     }
 
 
