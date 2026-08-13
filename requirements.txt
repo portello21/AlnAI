@@ -16,3 +16,5 @@ google-api-python-client
 plotly
 psutil
 torchvision
+extra-streamlit-components
+pytest
