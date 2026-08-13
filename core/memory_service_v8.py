@@ -18,12 +18,7 @@ class MemoryCommandResult:
 
 
 class FamilyMemoryService:
-    """Security boundary around MemoryEngine for family profiles.
-
-    Private memories keep using the real profile identity for backward
-    compatibility. Shared memory is a distinct pseudo-profile and is only ever
-    reachable from Finance Agent for Allan or Beatriz.
-    """
+    """Authorization boundary around MemoryEngine for family profiles."""
 
     def __init__(self, engine: MemoryEngine | None = None):
         self.engine = engine or MemoryEngine()
@@ -42,6 +37,15 @@ class FamilyMemoryService:
             return SHARED_FINANCE_MEMORY_PROFILE
         return str(profile or "").strip()
 
+    def authorized_memory_profiles(self, profile: str, agent_id: str) -> tuple[str, ...]:
+        private_profile = str(profile or "").strip()
+        if not normalize_profile(private_profile):
+            return ()
+        output = [private_profile]
+        if self._is_shared_allowed(profile, agent_id):
+            output.append(SHARED_FINANCE_MEMORY_PROFILE)
+        return tuple(output)
+
     def process_explicit_command(
         self,
         profile: str,
@@ -54,11 +58,10 @@ class FamilyMemoryService:
         if not detected.get("command"):
             return MemoryCommandResult(handled=False)
 
-        target = self.command_profile(
-            profile,
-            agent_id,
-            shared_finance=shared_finance,
-        )
+        target = self.command_profile(profile, agent_id, shared_finance=shared_finance)
+        if target not in self.authorized_memory_profiles(profile, agent_id):
+            return MemoryCommandResult(True, "Esse espaço de memória não é autorizado para este perfil.", False)
+
         result = self.commands.process(profile=target, user_text=text)
         action = result.get("command")
 
@@ -75,6 +78,46 @@ class FamilyMemoryService:
             return MemoryCommandResult(True, "Não encontrei memória correspondente neste espaço.", True)
 
         return MemoryCommandResult(True, "Comando de memória processado.", bool(result.get("success", True)))
+
+    def list_authorized(
+        self,
+        profile: str,
+        agent_id: str,
+        *,
+        shared_finance: bool = False,
+        limit: int = 50,
+    ) -> list[dict]:
+        target = self.command_profile(profile, agent_id, shared_finance=shared_finance)
+        if target not in self.authorized_memory_profiles(profile, agent_id):
+            return []
+        try:
+            return self.engine.list_memories(profile=target, active_only=True, limit=max(1, min(int(limit), 100)))
+        except Exception:
+            return []
+
+    def forget_authorized(
+        self,
+        profile: str,
+        agent_id: str,
+        memory_id: str,
+        *,
+        shared_finance: bool = False,
+    ) -> bool:
+        memory_id = str(memory_id or "").strip()
+        if not memory_id:
+            return False
+        memories = self.list_authorized(
+            profile,
+            agent_id,
+            shared_finance=shared_finance,
+            limit=100,
+        )
+        if memory_id not in {str(item.get("id", "")) for item in memories}:
+            return False
+        try:
+            return bool(self.engine.forget_memory(memory_id))
+        except Exception:
+            return False
 
     def shared_finance_context(self, profile: str, agent_id: str, query: str) -> str:
         if not self._is_shared_allowed(profile, agent_id):
