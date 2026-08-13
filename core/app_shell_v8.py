@@ -30,12 +30,14 @@ from core.ui_v8 import (
     render_profile,
     render_welcome,
 )
+from core.workspace_v8 import render_documents_view, render_memory_view, render_system_view
 
 LOGGER = logging.getLogger("rog.v8")
 TRUST_COOKIE_NAME = "rog_ai_v8_device"
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_DIRECT_CONTEXT_CHARS = 12_000
 MAX_AUTH_RESTORE_ATTEMPTS = 3
+VALID_VIEWS = {"chat", "memories", "documents", "system"}
 
 
 @st.cache_resource
@@ -69,6 +71,7 @@ def init_state() -> None:
     st.session_state.setdefault("authenticated", False)
     st.session_state.setdefault("current_profile", None)
     st.session_state.setdefault("current_agent", "orchestrator")
+    st.session_state.setdefault("current_view", "chat")
     st.session_state.setdefault("conversations_by_profile", {})
     st.session_state.setdefault("busy", False)
     st.session_state.setdefault("auth_restore_attempts", 0)
@@ -81,6 +84,7 @@ def clear_private_state(*, preserve_restore_attempts: bool = True) -> None:
         "authenticated",
         "current_profile",
         "current_agent",
+        "current_view",
         "conversations",
         "conversations_by_profile",
         "memory_by_profile",
@@ -93,6 +97,7 @@ def clear_private_state(*, preserve_restore_attempts: bool = True) -> None:
     st.session_state.authenticated = False
     st.session_state.current_profile = None
     st.session_state.current_agent = "orchestrator"
+    st.session_state.current_view = "chat"
     st.session_state.busy = False
     st.session_state.auth_restore_attempts = attempts
 
@@ -118,6 +123,7 @@ def _restore_trusted_device(manager) -> None:
         st.session_state.authenticated = True
         st.session_state.current_profile = identity.profile
         st.session_state.current_agent = "orchestrator"
+        st.session_state.current_view = "chat"
         st.session_state.auth_restore_attempts = MAX_AUTH_RESTORE_ATTEMPTS
 
 
@@ -161,6 +167,7 @@ def render_login(manager) -> None:
             st.session_state.authenticated = True
             st.session_state.current_profile = profile
             st.session_state.current_agent = "orchestrator"
+            st.session_state.current_view = "chat"
             st.session_state.auth_restore_attempts = MAX_AUTH_RESTORE_ATTEMPTS
             _trust_current_device(manager, profile)
             st.rerun()
@@ -209,6 +216,11 @@ def persist_conversations(profile: str, conversations: dict[str, list]) -> None:
         LOGGER.warning("history persistence failed: %s", type(exc).__name__)
 
 
+def _goto(view: str) -> None:
+    if view in VALID_VIEWS:
+        st.session_state.current_view = view
+
+
 def render_sidebar(profile: str, agent_id: str, conversations: dict[str, list], manager) -> None:
     with st.sidebar:
         render_brand()
@@ -218,16 +230,33 @@ def render_sidebar(profile: str, agent_id: str, conversations: dict[str, list], 
             if st.button(
                 f"{meta[0]}  {meta[1]}",
                 key=f"v8_nav_{aid}",
-                type="primary" if aid == agent_id else "secondary",
+                type="primary" if aid == agent_id and st.session_state.current_view == "chat" else "secondary",
                 use_container_width=True,
             ):
                 st.session_state.current_agent = aid
+                _goto("chat")
                 st.rerun()
 
         st.markdown('<div class="rog-section">Workspace</div>', unsafe_allow_html=True)
+        for view, label in (
+            ("chat", "💬  Conversa"),
+            ("memories", "🧠  Memórias"),
+            ("documents", "📎  Documentos"),
+            ("system", "⚙  Sistema"),
+        ):
+            if st.button(
+                label,
+                key=f"v8_view_{view}",
+                type="primary" if st.session_state.current_view == view else "secondary",
+                use_container_width=True,
+            ):
+                _goto(view)
+                st.rerun()
+
         if st.button("＋  Nova conversa", key="v8_new_chat", use_container_width=True):
             conversations[agent_id] = []
             persist_conversations(profile, conversations)
+            _goto("chat")
             st.rerun()
 
         if agent_id == "finance" and profile in {"Allan", "Beatriz"}:
@@ -333,7 +362,6 @@ def process_submission(profile: str, agent_id: str, conversations: dict[str, lis
         display_parts.append(clean)
         query_parts.append(clean)
 
-    # Explicit memory commands are processed before the LLM and never leak across scopes.
     if clean and not files and audio is None:
         memory_result = _family_memory().process_explicit_command(
             profile,
@@ -361,7 +389,6 @@ def process_submission(profile: str, agent_id: str, conversations: dict[str, lis
     if audio is not None:
         try:
             from providers.audio import transcribe_audio_bytes
-
             transcript = transcribe_audio_bytes(audio.getvalue()).strip()
             if transcript:
                 display_parts.append(f"🎙️ {transcript}")
@@ -378,7 +405,6 @@ def process_submission(profile: str, agent_id: str, conversations: dict[str, lis
 
     try:
         from core.vector_rag import query_rag
-
         rag_docs = query_rag(
             query,
             n_results=3,
@@ -423,24 +449,8 @@ def process_submission(profile: str, agent_id: str, conversations: dict[str, lis
     st.rerun()
 
 
-def run() -> None:
-    init_state()
-    inject_design_system()
-    manager = _cookie_manager()
-    _restore_trusted_device(manager)
-
-    if not st.session_state.authenticated or st.session_state.current_profile not in ALLOWED_PROFILES:
-        clear_private_state(preserve_restore_attempts=True)
-        render_login(manager)
-        st.stop()
-
-    profile = st.session_state.current_profile
-    agent_id = st.session_state.current_agent if st.session_state.current_agent in RUNTIME_AGENTS else "orchestrator"
-    st.session_state.current_agent = agent_id
-    conversations = profile_conversations(profile)
+def _render_chat(profile: str, agent_id: str, conversations: dict[str, list]) -> None:
     history = conversations[agent_id]
-
-    render_sidebar(profile, agent_id, conversations, manager)
     render_agent_header(agent_id)
     if not history:
         render_welcome(agent_id, profile)
@@ -469,3 +479,37 @@ def run() -> None:
     )
     if submission is not None:
         process_submission(profile, agent_id, conversations, submission)
+
+
+def run() -> None:
+    init_state()
+    inject_design_system()
+    manager = _cookie_manager()
+    _restore_trusted_device(manager)
+
+    if not st.session_state.authenticated or st.session_state.current_profile not in ALLOWED_PROFILES:
+        clear_private_state(preserve_restore_attempts=True)
+        render_login(manager)
+        st.stop()
+
+    profile = st.session_state.current_profile
+    agent_id = st.session_state.current_agent if st.session_state.current_agent in RUNTIME_AGENTS else "orchestrator"
+    view = st.session_state.current_view if st.session_state.current_view in VALID_VIEWS else "chat"
+    st.session_state.current_agent = agent_id
+    st.session_state.current_view = view
+    conversations = profile_conversations(profile)
+
+    render_sidebar(profile, agent_id, conversations, manager)
+
+    shared_scope = bool(st.session_state.shared_finance_upload) and agent_id == "finance" and profile in {"Allan", "Beatriz"}
+    if view == "memories":
+        render_memory_view(profile, agent_id, _family_memory(), shared_finance=shared_scope)
+        return
+    if view == "documents":
+        render_documents_view(profile, agent_id, _process_files, shared_finance=shared_scope)
+        return
+    if view == "system":
+        render_system_view(cookie_ready=bool(_cookie_secret() and manager))
+        return
+
+    _render_chat(profile, agent_id, conversations)
