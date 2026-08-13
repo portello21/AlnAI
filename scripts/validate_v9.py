@@ -12,6 +12,7 @@ def main() -> int:
         "tests/test_provider_policy_v9.py",
         "tests/test_llm_router_v9.py",
         "tests/test_rag_isolation_v9.py",
+        "tests/test_context_security_v9.py",
     ]
     subprocess.run([sys.executable, "-m", "pytest", "-q", *tests], cwd=ROOT, check=True)
     print("V9_CONTRACT_TESTS_OK")
