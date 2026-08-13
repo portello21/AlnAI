@@ -14,7 +14,7 @@ def run(cmd: list[str]) -> None:
 
 
 def active_python_files() -> list[Path]:
-    roots = [ROOT / "app.py", ROOT / "core", ROOT / "agents", ROOT / "providers", ROOT / "tools"]
+    roots = [ROOT / "app.py", ROOT / "core", ROOT / "agents", ROOT / "providers", ROOT / "tools", ROOT / "tests"]
     files: list[Path] = []
     for root in roots:
         if root.is_file():
@@ -41,6 +41,7 @@ def main() -> int:
         "tests/test_profile_access_v8.py",
         "tests/test_security_contract_v8.py",
         "tests/test_ui_contract_v8.py",
+        "tests/test_source_contract_v8.py",
     ])
     print("V8_CONTRACT_TESTS_OK")
     return 0
