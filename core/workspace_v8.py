@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import streamlit as st
+
+from core.config import Config
+
+
+def render_memory_view(profile: str, agent_id: str, memory_service, *, shared_finance: bool) -> None:
+    st.subheader("Memórias")
+    scope_label = "financeiro compartilhado Allan ↔ Beatriz" if shared_finance else f"privado de {profile}"
+    st.caption(f"Mostrando o espaço {scope_label}. Use “lembre que …” no chat para salvar e “esqueça …” para remover por assunto.")
+
+    memories = memory_service.list_authorized(
+        profile,
+        agent_id,
+        shared_finance=shared_finance,
+        limit=60,
+    )
+    if not memories:
+        st.info("Nenhuma memória ativa neste espaço.")
+        return
+
+    for memory in memories:
+        memory_id = str(memory.get("id", ""))
+        content = str(memory.get("content", ""))
+        memory_type = str(memory.get("memory_type", "fact"))
+        importance = float(memory.get("importance", 0.5) or 0.5)
+        with st.container(border=True):
+            left, right = st.columns([8, 2])
+            with left:
+                st.markdown(content)
+                st.caption(f"{memory_type} · importância {importance:.0%}")
+            with right:
+                if st.button("Remover", key=f"forget_{memory_id[:16]}", use_container_width=True):
+                    if memory_service.forget_authorized(
+                        profile,
+                        agent_id,
+                        memory_id,
+                        shared_finance=shared_finance,
+                    ):
+                        st.success("Memória removida.")
+                        st.rerun()
+                    st.error("Não foi possível remover essa memória.")
+
+
+def render_documents_view(profile: str, agent_id: str, process_files, *, shared_finance: bool) -> None:
+    st.subheader("Documentos")
+    if shared_finance:
+        st.caption("Novos documentos serão indexados no espaço financeiro compartilhado Allan ↔ Beatriz.")
+    else:
+        st.caption(f"Novos documentos serão indexados no espaço privado de {profile} para o agente atual.")
+
+    files = st.file_uploader(
+        "Adicionar à base de conhecimento",
+        type=["txt", "md", "csv", "json", "pdf", "docx", "png", "jpg", "jpeg", "webp"],
+        accept_multiple_files=True,
+        key="v8_document_uploader",
+        help="Até 10 arquivos por vez; limite de 20 MB por arquivo.",
+    )
+    if st.button("Indexar documentos", type="primary", disabled=not files, use_container_width=True):
+        notes, _ = process_files(profile, agent_id, list(files or [])[:10])
+        if notes:
+            for note in notes:
+                st.write(note)
+        else:
+            st.warning("Nenhum documento foi indexado.")
+
+
+def render_system_view(*, cookie_ready: bool) -> None:
+    st.subheader("Sistema")
+    st.caption("Diagnóstico seguro. Nenhuma chave ou credencial é exibida.")
+
+    status = Config.status()
+    rows = [
+        ("DeepSeek", status.get("deepseek", False), "Provider em nuvem"),
+        ("Supabase", status.get("supabase", False), "Persistência remota opcional"),
+        ("Dispositivo confiável", cookie_ready, "Sessão persistente no navegador"),
+    ]
+
+    try:
+        from core.llm_router import local_available
+        local_ok = bool(local_available())
+    except Exception:
+        local_ok = False
+    rows.append(("Modelo local", local_ok, "Docker Model Runner / Qwen"))
+
+    for name, ok, description in rows:
+        with st.container(border=True):
+            a, b = st.columns([8, 2])
+            with a:
+                st.markdown(f"**{name}**")
+                st.caption(description)
+            with b:
+                st.markdown("🟢 OK" if ok else "⚪ Opcional/indisponível")
+
+    st.info("Uma integração opcional indisponível não deve impedir a abertura da interface. O roteador tenta alternativas quando possível.")
