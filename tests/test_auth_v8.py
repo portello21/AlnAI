@@ -2,6 +2,7 @@ import time
 
 from core.auth_v8 import (
     ALLOWED_PROFILES,
+    credential_version,
     issue_device_token,
     normalize_profile,
     verify_device_token,
@@ -29,11 +30,28 @@ def test_password_verification_is_fail_closed():
 
 def test_device_token_round_trip():
     now = int(time.time())
-    token = issue_device_token("Allan", SECRET, ttl_days=90, device_id="browser-device-123", now=now)
-    identity = verify_device_token(token, SECRET, now=now + 1)
+    tag = credential_version(SECRET, "correct-horse")
+    token = issue_device_token(
+        "Allan",
+        SECRET,
+        ttl_days=90,
+        device_id="browser-device-123",
+        now=now,
+        credential_tag=tag,
+    )
+    identity = verify_device_token(token, SECRET, now=now + 1, expected_credential_tag=tag)
     assert identity is not None
     assert identity.profile == "Allan"
     assert identity.device_id == "browser-device-123"
+
+
+def test_password_rotation_invalidates_existing_device_token():
+    now = int(time.time())
+    old_tag = credential_version(SECRET, "old-password")
+    new_tag = credential_version(SECRET, "new-password")
+    token = issue_device_token("Beatriz", SECRET, now=now, credential_tag=old_tag)
+    assert verify_device_token(token, SECRET, now=now + 1, expected_credential_tag=old_tag) is not None
+    assert verify_device_token(token, SECRET, now=now + 1, expected_credential_tag=new_tag) is None
 
 
 def test_tampered_token_is_rejected():
