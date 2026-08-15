@@ -72,7 +72,14 @@ def _nvidia(requested_model: str, messages: list, temperature: float, max_tokens
         return None
     if not provider_allowed(provider, allow_paid=Config.ALLOW_PAID_PROVIDERS):
         return None
-    value = chat_nvidia(Config.NVIDIA_API, Config.NVIDIA_BASE_URL, Config.NVIDIA_MODEL, messages, temperature, max_tokens or 4096)
+    value = chat_nvidia(
+        Config.NVIDIA_API,
+        Config.NVIDIA_BASE_URL,
+        Config.NVIDIA_MODEL,
+        messages,
+        temperature,
+        max_tokens or 4096,
+    )
     return _finish(value, provider, requested_model, Config.NVIDIA_MODEL, fallback)
 
 
@@ -88,14 +95,19 @@ def _deepseek(requested_model: str, messages: list, temperature: float, max_toke
 
 
 def attempt_order(requested_model: str) -> tuple[str, ...]:
+    """Return provider order without making the hosted family app depend on a PC.
+
+    Auto mode prefers NVIDIA NIM when configured, then the local Qwen fallback,
+    and only then paid DeepSeek when the explicit cost guard permits it.
+    """
     mode = Config.PROVIDER_MODE
     if mode in {"local", "qwen"}:
         return ("local",)
     if mode == "nvidia":
-        return ("nvidia", "local")
+        return ("nvidia", "local", "deepseek")
     if mode == "deepseek":
-        return ("deepseek", "local", "nvidia")
-    return ("local", "nvidia", "deepseek")
+        return ("deepseek", "nvidia", "local")
+    return ("nvidia", "local", "deepseek")
 
 
 def chat_with_metadata(model: str, messages: list, temperature: float = 0.2, max_tokens=None) -> dict:
@@ -118,7 +130,7 @@ def chat_with_metadata(model: str, messages: list, temperature: float = 0.2, max
             return result
         failures.append({"provider": candidate, "error_type": result.get("error_type") or "provider_error"})
     return {
-        "content": "Nenhum provider de IA permitido e disponível respondeu. Verifique o modelo local ou as integrações configuradas.",
+        "content": "Nenhum provider de IA permitido e disponível respondeu. Verifique NVIDIA NIM, o modelo local ou as integrações configuradas.",
         "provider": "none",
         "requested_model": requested_model,
         "model": None,
