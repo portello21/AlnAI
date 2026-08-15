@@ -1,9 +1,14 @@
 import core.llm_router_v9 as router
 
 
-def test_auto_order_is_local_then_free_then_paid(monkeypatch):
+def test_auto_order_prefers_hosted_nvidia_then_local_then_paid(monkeypatch):
     monkeypatch.setattr(router.Config, "PROVIDER_MODE", "auto")
-    assert router.attempt_order("deepseek-reasoner") == ("local", "nvidia", "deepseek")
+    assert router.attempt_order("deepseek-reasoner") == ("nvidia", "local", "deepseek")
+
+
+def test_nvidia_mode_keeps_local_and_paid_fallbacks(monkeypatch):
+    monkeypatch.setattr(router.Config, "PROVIDER_MODE", "nvidia")
+    assert router.attempt_order("auto") == ("nvidia", "local", "deepseek")
 
 
 def test_paid_deepseek_is_not_attempted_when_guard_is_off(monkeypatch):
