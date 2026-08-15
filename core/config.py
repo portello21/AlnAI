@@ -34,10 +34,14 @@ class Config:
     PROVIDER_MODE = _setting("ROG_PROVIDER_MODE", "auto").casefold()
     ALLOW_PAID_PROVIDERS = _bool_setting("ROG_ALLOW_PAID", False)
 
-    # NVIDIA build.nvidia.com offers serverless development endpoints; keep
-    # this opt-in because quotas/terms can change independently of the app.
+    # NVIDIA NIM is the preferred hosted provider for the family deployment.
+    # The model below is the endpoint validated by the project owner. It can be
+    # overridden in Streamlit secrets without changing source code.
     NVIDIA_BASE_URL = _setting("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
-    NVIDIA_MODEL = _setting("NVIDIA_MODEL", "")
+    NVIDIA_MODEL = _setting(
+        "NVIDIA_MODEL",
+        "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    )
 
     @classmethod
     def status(cls) -> dict[str, bool]:
