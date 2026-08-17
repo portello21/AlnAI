@@ -40,3 +40,8 @@ def test_app_is_only_a_bootstrap_shell():
     assert "app_shell.render_login = render_login_v9" in APP
     assert "app_shell.run()" in APP
     assert len(APP.splitlines()) < 40
+
+
+def test_collapsed_sidebar_has_current_streamlit_reopen_control():
+    assert 'data-testid="stSidebarCollapsed"' in UI
+    assert 'initial_sidebar_state="expanded"' in APP
