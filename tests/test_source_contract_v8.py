@@ -44,7 +44,7 @@ def test_app_is_only_a_bootstrap_shell():
 
 def test_collapsed_sidebar_has_current_streamlit_reopen_control():
     assert 'data-testid="stSidebarCollapsed"' in UI
-    assert 'initial_sidebar_state="expanded"' in APP
+    assert 'initial_sidebar_state="auto"' in APP
 
 
 def test_permanent_navigation_does_not_depend_on_sidebar():
@@ -58,3 +58,17 @@ def test_original_brand_assets_exist():
     assert (ROOT / "assets" / "rog-ai-mark.svg").is_file()
     assert (ROOT / "assets" / "rog-ai-core.webp").is_file()
     assert "rog-ai-core.webp" in UI
+
+
+def test_fluid_chat_visual_contract():
+    assert "Fluid chat shell" in UI
+    assert 'avatar = ":material/person:"' in SHELL
+    assert 'avatar=":material/auto_awesome:"' in SHELL
+    assert "rog-inline-status" in UI
+    assert 'meta = " · ".join' not in SHELL
+
+
+def test_sidebar_uses_clean_text_labels():
+    assert 'st.button(meta[1], key=f"v8_nav_{aid}"' in SHELL
+    assert '("chat", "Conversa")' in SHELL
+    assert 'initial_sidebar_state="auto"' in APP

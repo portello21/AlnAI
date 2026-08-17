@@ -300,15 +300,15 @@ def render_sidebar(profile: str, agent_id: str, conversations: dict[str, list], 
         render_brand(); render_profile(profile)
         st.markdown('<div class="rog-section">Assistentes</div>', unsafe_allow_html=True)
         for aid, meta in AGENT_META.items():
-            if st.button(f"{meta[0]}  {meta[1]}", key=f"v8_nav_{aid}", type="primary" if aid == agent_id and st.session_state.current_view == "chat" else "secondary", use_container_width=True, disabled=bool(st.session_state.busy)):
+            if st.button(meta[1], key=f"v8_nav_{aid}", type="primary" if aid == agent_id and st.session_state.current_view == "chat" else "secondary", use_container_width=True, disabled=bool(st.session_state.busy)):
                 st.session_state.current_agent = aid; _goto("chat"); st.rerun()
         st.markdown('<div class="rog-section">Workspace</div>', unsafe_allow_html=True)
-        for view, label in (("chat", "💬  Conversa"), ("memories", "🧠  Memórias"), ("documents", "📎  Documentos"), ("creative", "🎨  Estúdio Criativo"), ("system", "⚙  Sistema")):
+        for view, label in (("chat", "Conversa"), ("memories", "Memórias"), ("documents", "Documentos"), ("creative", "Estúdio Criativo"), ("system", "Sistema")):
             if st.button(label, key=f"v8_view_{view}", type="primary" if st.session_state.current_view == view else "secondary", use_container_width=True):
                 _goto(view); st.rerun()
-        if st.session_state.get("is_admin") and st.button("🛡  Administração", key="v8_view_admin", type="primary" if st.session_state.current_view == "admin" else "secondary", use_container_width=True):
+        if st.session_state.get("is_admin") and st.button("Administração", key="v8_view_admin", type="primary" if st.session_state.current_view == "admin" else "secondary", use_container_width=True):
             _goto("admin"); st.rerun()
-        if st.button("＋  Nova conversa", key="v8_new_chat", use_container_width=True):
+        if st.button("Nova conversa", key="v8_new_chat", use_container_width=True, icon=":material/edit_square:"):
             if conversations.get(agent_id):
                 _persistence().archive_conversation(profile=profile, agent_id=agent_id, messages=conversations[agent_id])
             conversations[agent_id] = []; persist_conversations(profile, conversations); _goto("chat"); st.rerun()
@@ -330,9 +330,11 @@ def render_navigation_bar(profile: str, agent_id: str, conversations: dict[str, 
         with brand:
             st.markdown(f'<div class="rog-top-brand"><div class="rog-logo">{MARK_SVG}</div><div><strong>ROG AI</strong><span>FAMILY INTELLIGENCE</span></div></div>', unsafe_allow_html=True)
         with context:
-            st.markdown(f'<div class="rog-top-context"><strong>{html.escape(agent_name)}</strong>{html.escape(profile.title())} · workspace privado</div>', unsafe_allow_html=True)
+            status = "Processando" if st.session_state.busy else "Disponível"
+            state_class = " is-busy" if st.session_state.busy else ""
+            st.markdown(f'<div class="rog-top-context"><strong>{html.escape(agent_name)}</strong><span class="rog-inline-status{state_class}"><i></i>{status}</span><span class="rog-profile-context">{html.escape(profile.title())} · privado</span></div>', unsafe_allow_html=True)
         with menu:
-            with st.popover("☰  Menu", use_container_width=True):
+            with st.popover("Menu", use_container_width=True, icon=":material/menu:"):
                 st.caption("NAVEGAÇÃO")
                 agent_ids = list(AGENT_META)
                 selected_agent = st.selectbox("Assistente", agent_ids, index=agent_ids.index(agent_id), format_func=lambda aid: AGENT_META[aid][1], key="v8_top_agent")
@@ -462,7 +464,7 @@ def _render_active_response(profile: str, agent_id: str, conversations: dict[str
     if token_batch:
         st.session_state.streamed_response = str(st.session_state.get("streamed_response", "")) + token_batch
     if st.session_state.get("streamed_response"):
-        with st.chat_message("assistant"):
+        with st.chat_message("assistant", avatar=":material/auto_awesome:"):
             st.markdown(st.session_state.streamed_response + ("▌" if status["state"] == "running" else ""))
     if status["state"] == "running":
         st.caption("ROG AI está preparando a resposta…")
@@ -489,7 +491,7 @@ def _render_active_response(profile: str, agent_id: str, conversations: dict[str
 
 
 def _render_chat(profile: str, agent_id: str, conversations: dict[str, list]) -> None:
-    history = conversations[agent_id]; render_agent_header(agent_id, busy=bool(st.session_state.busy))
+    history = conversations[agent_id]
     if not history:
         render_welcome(agent_id, profile)
         st.markdown('<div class="rog-quick-label">Ações rápidas</div>', unsafe_allow_html=True)
@@ -500,11 +502,12 @@ def _render_chat(profile: str, agent_id: str, conversations: dict[str, list]) ->
                     process_submission(profile, agent_id, conversations, prompt)
     for message_index, message in enumerate(history):
         role = message.get("role")
-        with st.chat_message("user" if role == "user" else "assistant"):
+        avatar = ":material/person:" if role == "user" else ":material/auto_awesome:"
+        with st.chat_message("user" if role == "user" else "assistant", avatar=avatar):
             runtime = {}
             if role == "assistant":
-                runtime = message.get("runtime") or {}; label = runtime.get("agent_name", "ROG AI"); model = runtime.get("model", ""); provider = runtime.get("provider", ""); meta = " · ".join(str(x) for x in (label, model, provider) if x)
-                if meta: st.caption(meta)
+                runtime = message.get("runtime") or {}; label = runtime.get("agent_name", "ROG AI")
+                st.caption(str(label))
             content = str(message.get("content", ""))
             st.markdown(content)
             if role == "assistant" and content:
@@ -513,13 +516,13 @@ def _render_chat(profile: str, agent_id: str, conversations: dict[str, list]) ->
                 if st.session_state.get(feedback_key):
                     st.caption("Obrigado pelo feedback.")
                 else:
-                    positive, negative, spacer = st.columns([1, 1, 8])
+                    positive, negative, spacer = st.columns([1.2, 1.6, 7.2])
                     with positive:
-                        if st.button("👍", key=f"positive_{message_index}_{message_hash[:12]}", help="Resposta útil"):
+                        if st.button("Útil", key=f"positive_{message_index}_{message_hash[:12]}", help="Resposta útil", icon=":material/thumb_up:"):
                             if _persistence().save_feedback(profile=profile, agent_id=agent_id, message_hash=message_hash, rating=1, provider=runtime.get("provider", ""), model=runtime.get("model", "")):
                                 st.session_state[feedback_key] = True; st.rerun()
                     with negative:
-                        with st.popover("👎"):
+                        with st.popover("Melhorar", icon=":material/thumb_down:"):
                             reason = st.selectbox("O que faltou?", ("Incorreta", "Incompleta", "Lenta", "Não usou o documento", "Agente errado"), key=f"reason_{message_index}_{message_hash[:12]}")
                             if st.button("Enviar feedback", key=f"negative_{message_index}_{message_hash[:12]}", use_container_width=True):
                                 if _persistence().save_feedback(profile=profile, agent_id=agent_id, message_hash=message_hash, rating=-1, reason=reason, provider=runtime.get("provider", ""), model=runtime.get("model", "")):
