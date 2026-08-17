@@ -1,4 +1,12 @@
-from core.vector_rag_v9 import make_chunk_id, namespace_where, normalize_namespaces, validate_ownership
+from core.vector_rag_v9 import (
+    citation_label,
+    format_rag_result,
+    lexical_score,
+    make_chunk_id,
+    namespace_where,
+    normalize_namespaces,
+    validate_ownership,
+)
 
 
 def test_identical_file_hashes_do_not_collide_across_namespaces():
@@ -36,3 +44,19 @@ def test_namespace_filter_deduplicates_and_normalizes():
     allowed = normalize_namespaces(["PROFILE:ALLAN", "profile:allan", " profile:allan "])
     assert allowed == ("profile:allan",)
     assert namespace_where(allowed) == {"namespace": "profile:allan"}
+
+
+def test_hybrid_keyword_signal_rewards_exact_domain_terms():
+    exact = lexical_score("orçamento familiar 2026", "Orçamento familiar aprovado para 2026")
+    unrelated = lexical_score("orçamento familiar 2026", "Rotina de exercícios da semana")
+    assert exact > unrelated
+    assert 0 <= exact <= 1
+
+
+def test_rag_results_include_safe_source_citations():
+    item = {
+        "text": "Saldo projetado de 1200.",
+        "metadata": {"filename": "planejamento.pdf", "chunk_index": 2},
+    }
+    assert citation_label(item["metadata"]) == "planejamento.pdf · trecho 3"
+    assert format_rag_result(item).startswith("[Fonte: planejamento.pdf · trecho 3]\n")

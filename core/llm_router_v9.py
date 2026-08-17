@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import time
+
 from core.config import Config
 from core.provider_policy import ProviderHealthRegistry, provider_allowed
+from core.telemetry import record_runtime_event
 from providers.deepseek import chat_deepseek
 from providers.docker_model import chat_dmr, healthcheck_dmr
 from providers.nvidia import chat_nvidia
@@ -122,6 +125,7 @@ def chat_with_metadata(model: str, messages: list, temperature: float = 0.2, max
     failures: list[dict[str, str]] = []
     for index, candidate in enumerate(attempt_order(requested_model)):
         fallback = index > 0
+        started = time.monotonic()
         if candidate == "local":
             result = _local(requested_model, messages, temperature, max_tokens, fallback)
         elif candidate == "nvidia":
@@ -131,6 +135,15 @@ def chat_with_metadata(model: str, messages: list, temperature: float = 0.2, max
         if result is None:
             continue
         attempted.append(candidate)
+        duration_ms = round((time.monotonic() - started) * 1000)
+        result["duration_ms"] = duration_ms
+        record_runtime_event(
+            provider=candidate,
+            success=bool(result["success"]),
+            duration_ms=duration_ms,
+            error_type=result.get("error_type") or "",
+            fallback=fallback,
+        )
         if result["success"]:
             result["attempted_providers"] = tuple(attempted)
             return result
