@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import importlib.util
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 import streamlit as st
@@ -328,13 +329,32 @@ def _render_chat(profile: str, agent_id: str, conversations: dict[str, list]) ->
             with column:
                 if st.button(prompt, key=f"v8_quick_{agent_id}_{prompt}", use_container_width=True, disabled=bool(st.session_state.busy)):
                     process_submission(profile, agent_id, conversations, prompt)
-    for message in history:
+    for message_index, message in enumerate(history):
         role = message.get("role")
         with st.chat_message("user" if role == "user" else "assistant"):
+            runtime = {}
             if role == "assistant":
                 runtime = message.get("runtime") or {}; label = runtime.get("agent_name", "ROG AI"); model = runtime.get("model", ""); provider = runtime.get("provider", ""); meta = " · ".join(str(x) for x in (label, model, provider) if x)
                 if meta: st.caption(meta)
-            st.markdown(message.get("content", ""))
+            content = str(message.get("content", ""))
+            st.markdown(content)
+            if role == "assistant" and content:
+                message_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+                feedback_key = f"feedback_{profile}_{agent_id}_{message_hash[:16]}"
+                if st.session_state.get(feedback_key):
+                    st.caption("Obrigado pelo feedback.")
+                else:
+                    positive, negative, spacer = st.columns([1, 1, 8])
+                    with positive:
+                        if st.button("👍", key=f"positive_{message_index}_{message_hash[:12]}", help="Resposta útil"):
+                            if _persistence().save_feedback(profile=profile, agent_id=agent_id, message_hash=message_hash, rating=1, provider=runtime.get("provider", ""), model=runtime.get("model", "")):
+                                st.session_state[feedback_key] = True; st.rerun()
+                    with negative:
+                        with st.popover("👎"):
+                            reason = st.selectbox("O que faltou?", ("Incorreta", "Incompleta", "Lenta", "Não usou o documento", "Agente errado"), key=f"reason_{message_index}_{message_hash[:12]}")
+                            if st.button("Enviar feedback", key=f"negative_{message_index}_{message_hash[:12]}", use_container_width=True):
+                                if _persistence().save_feedback(profile=profile, agent_id=agent_id, message_hash=message_hash, rating=-1, reason=reason, provider=runtime.get("provider", ""), model=runtime.get("model", "")):
+                                    st.session_state[feedback_key] = True; st.rerun()
     audio_ready = importlib.util.find_spec("whisper") is not None
     submission = st.chat_input("Mensagem para o ROG AI…", key="v8_chat_input", disabled=bool(st.session_state.busy), accept_file="multiple", file_type=["txt","md","csv","json","pdf","docx","png","jpg","jpeg","webp"], max_upload_size=20, accept_audio=audio_ready)
     if submission is not None: process_submission(profile, agent_id, conversations, submission)
@@ -352,5 +372,5 @@ def run() -> None:
     shared_scope = bool(st.session_state.shared_finance_upload) and agent_id == "finance" and profile.lower() in {"allan", "beatriz"}
     if view == "memories": render_memory_view(profile, agent_id, _family_memory(), shared_finance=shared_scope); return
     if view == "documents": render_documents_view(profile, agent_id, _process_files, shared_finance=shared_scope); return
-    if view == "system": render_system_view(cookie_ready=bool(_cookie_secret() and manager)); return
+    if view == "system": render_system_view(cookie_ready=bool(_cookie_secret() and manager), profile=profile, feedback=_persistence().feedback_summary(profile)); return
     _render_chat(profile, agent_id, conversations)

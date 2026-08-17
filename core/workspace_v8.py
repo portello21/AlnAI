@@ -90,7 +90,7 @@ def render_documents_view(profile: str, agent_id: str, process_files, *, shared_
                         st.error("Não foi possível excluir o documento.")
 
 
-def render_system_view(*, cookie_ready: bool) -> None:
+def render_system_view(*, cookie_ready: bool, profile: str, feedback: dict) -> None:
     st.subheader("Sistema")
     st.caption("Diagnóstico seguro. Nenhuma chave ou credencial é exibida.")
 
@@ -118,3 +118,23 @@ def render_system_view(*, cookie_ready: bool) -> None:
                 st.markdown("🟢 OK" if ok else "⚪ Opcional/indisponível")
 
     st.info("Uma integração opcional indisponível não deve impedir a abertura da interface. O roteador tenta alternativas quando possível.")
+
+    if str(profile).casefold() == "allan":
+        from core.telemetry import runtime_snapshot
+
+        snapshot = runtime_snapshot()
+        st.markdown("#### Operação desta instância")
+        if snapshot["requests"]:
+            cols = st.columns(4)
+            cols[0].metric("Requisições", snapshot["requests"])
+            cols[1].metric("Sucessos", snapshot["successes"])
+            cols[2].metric("Fallbacks", snapshot["fallbacks"])
+            cols[3].metric("Tempo médio", f"{snapshot['average_duration_ms']} ms")
+            st.caption("Métricas mantidas apenas em memória nesta instância; prompts, respostas e identidades não são registrados.")
+        else:
+            st.caption("Ainda não há requisições registradas nesta instância.")
+        st.markdown("#### Feedback deste perfil")
+        fcols = st.columns(3)
+        fcols[0].metric("Total", int(feedback.get("total", 0)))
+        fcols[1].metric("Úteis", int(feedback.get("positive", 0)))
+        fcols[2].metric("A melhorar", int(feedback.get("negative", 0)))
