@@ -324,66 +324,21 @@ def render_sidebar(profile: str, agent_id: str, conversations: dict[str, list], 
 
 
 def render_navigation_bar(profile: str, agent_id: str, conversations: dict[str, list], manager) -> None:
-    """Permanent navigation that remains usable even when Streamlit's sidebar is hidden."""
+    """Compact chat header; primary navigation lives in the desktop sidebar."""
     _, agent_name, _ = AGENT_META.get(agent_id, AGENT_META["orchestrator"])
     with st.container(key="rog_top_nav"):
-        brand, context, menu = st.columns([1.15, 1.7, .65], vertical_alignment="center")
-        with brand:
-            st.markdown(f'<div class="rog-top-brand"><div class="rog-logo">{MARK_SVG}</div><div><strong>ROG AI</strong><span>FAMILY INTELLIGENCE</span></div></div>', unsafe_allow_html=True)
+        context, action = st.columns([4.5, 1], vertical_alignment="center")
         with context:
             status = "Processando" if st.session_state.busy else "Disponível"
             state_class = " is-busy" if st.session_state.busy else ""
-            st.markdown(f'<div class="rog-top-context"><strong>{html.escape(agent_name)}</strong><span class="rog-inline-status{state_class}"><i></i>{status}</span><span class="rog-profile-context">{html.escape(profile.title())} · privado</span></div>', unsafe_allow_html=True)
-        with menu:
-            label = "Fechar" if st.session_state.get("v8_top_menu_open") else "Menu"
-            icon = ":material/close:" if st.session_state.get("v8_top_menu_open") else ":material/menu:"
-            if st.button(label, key="v8_top_menu_button", icon=icon, use_container_width=True):
-                st.session_state.v8_top_menu_open = not bool(st.session_state.get("v8_top_menu_open"))
-    if not st.session_state.get("v8_top_menu_open"):
-        return
-    with st.container(key="rog_top_menu_panel"):
-        heading, close = st.columns([4, 1], vertical_alignment="center")
-        with heading:
-            st.markdown("**Navegação**")
-        with close:
-            if st.button("Fechar", key="v8_top_menu_close", icon=":material/close:", use_container_width=True):
-                st.session_state.v8_top_menu_open = False
-                st.rerun()
-        agent_ids = list(AGENT_META)
-        selected_agent = st.selectbox("Assistente", agent_ids, index=agent_ids.index(agent_id), format_func=lambda aid: AGENT_META[aid][1], key="v8_top_agent")
-        if st.button("Abrir assistente", key="v8_top_open_agent", type="primary", use_container_width=True, disabled=bool(st.session_state.busy), icon=":material/smart_toy:"):
-            st.session_state.current_agent = selected_agent
-            st.session_state.v8_top_menu_open = False
-            _goto("chat")
-            st.rerun()
-        view_columns = st.columns(2)
-        for index, (target, label) in enumerate((("chat", "Conversa"), ("memories", "Memórias"), ("documents", "Documentos"), ("creative", "Estúdio"), ("system", "Sistema"))):
-            with view_columns[index % 2]:
-                if st.button(label, key=f"v8_top_view_{target}", type="primary" if st.session_state.current_view == target else "secondary", use_container_width=True):
-                    st.session_state.v8_top_menu_open = False
-                    _goto(target)
-                    st.rerun()
-        if st.session_state.get("is_admin") and st.button("Administração", key="v8_top_admin", use_container_width=True, icon=":material/admin_panel_settings:"):
-            st.session_state.v8_top_menu_open = False
-            _goto("admin")
-            st.rerun()
-        st.divider()
-        if st.button("Nova conversa", key="v8_top_new_chat", use_container_width=True, icon=":material/edit_square:"):
-            if conversations.get(agent_id):
-                _persistence().archive_conversation(profile=profile, agent_id=agent_id, messages=conversations[agent_id])
-            conversations[agent_id] = []
-            persist_conversations(profile, conversations)
-            st.session_state.v8_top_menu_open = False
-            _goto("chat")
-            st.rerun()
-        account_a, account_b = st.columns(2)
-        with account_a:
-            if st.button("Trocar perfil", key="v8_top_switch", use_container_width=True):
-                _forget_device(manager)
-                st.rerun()
-        with account_b:
-            if st.button("Sair", key="v8_top_logout", use_container_width=True):
-                _forget_device(manager)
+            st.markdown(f'<div class="rog-top-context"><strong>{html.escape(agent_name)}</strong><span class="rog-inline-status{state_class}"><i></i>{status}</span><span class="rog-profile-context">{html.escape(profile.title())} · workspace privado</span></div>', unsafe_allow_html=True)
+        with action:
+            if st.button("Nova", key="v13_top_new_chat", icon=":material/edit_square:", use_container_width=True, disabled=bool(st.session_state.busy), help="Iniciar nova conversa"):
+                if conversations.get(agent_id):
+                    _persistence().archive_conversation(profile=profile, agent_id=agent_id, messages=conversations[agent_id])
+                conversations[agent_id] = []
+                persist_conversations(profile, conversations)
+                _goto("chat")
                 st.rerun()
 
 
