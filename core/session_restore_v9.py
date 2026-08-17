@@ -17,6 +17,29 @@ def _secret(name: str) -> str:
         return ""
 
 
+def restore_supabase_session_token(token: str, signing_secret: str) -> bool:
+    stored = open_supabase_session(token, signing_secret)
+    if not stored:
+        return False
+    stored_profile, refresh_token = stored
+    identity = refresh_identity(refresh_token)
+    if identity is None or identity.profile != stored_profile:
+        return False
+    st.session_state.authenticated = True
+    st.session_state.current_profile = identity.profile
+    st.session_state.current_agent = "orchestrator"
+    st.session_state.current_view = "chat"
+    st.session_state.auth_restore_attempts = 3
+    st.session_state.auth_backend = "supabase"
+    st.session_state.auth_user_id = identity.user_id
+    st.session_state.auth_access_token = identity.access_token
+    st.session_state.auth_refresh_token = identity.refresh_token
+    st.session_state.is_admin = identity.is_admin
+    st.session_state.password_change_required = identity.password_change_required
+    st.session_state.auth_cookie_refresh_required = True
+    return True
+
+
 def restore_session_from_request() -> bool:
     """Restore auth before the UI shell mounts its cookie component."""
     if bool(st.session_state.get("authenticated")):
@@ -30,24 +53,7 @@ def restore_session_from_request() -> bool:
     if not token:
         return False
 
-    stored_supabase = open_supabase_session(token, signing_secret)
-    if stored_supabase:
-        stored_profile, refresh_token = stored_supabase
-        identity = refresh_identity(refresh_token)
-        if identity is None or identity.profile != stored_profile:
-            return False
-        st.session_state.authenticated = True
-        st.session_state.current_profile = identity.profile
-        st.session_state.current_agent = "orchestrator"
-        st.session_state.current_view = "chat"
-        st.session_state.auth_restore_attempts = 3
-        st.session_state.auth_backend = "supabase"
-        st.session_state.auth_user_id = identity.user_id
-        st.session_state.auth_access_token = identity.access_token
-        st.session_state.auth_refresh_token = identity.refresh_token
-        st.session_state.is_admin = identity.is_admin
-        st.session_state.password_change_required = identity.password_change_required
-        st.session_state.auth_cookie_refresh_required = True
+    if restore_supabase_session_token(token, signing_secret):
         return True
 
     preliminary = verify_device_token(token, signing_secret)
