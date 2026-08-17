@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 
 from core.memory_commands import MemoryCommandProcessor, detect_memory_command
 from core.memory_context import MemoryContextBuilder
@@ -116,6 +117,44 @@ class FamilyMemoryService:
             return False
         try:
             return bool(self.engine.forget_memory(memory_id))
+        except Exception:
+            return False
+
+    def edit_authorized(
+        self,
+        profile: str,
+        agent_id: str,
+        memory_id: str,
+        *,
+        content: str,
+        importance: float,
+        expires_in_days: int | None = None,
+        shared_finance: bool = False,
+    ) -> bool:
+        target = self.command_profile(profile, agent_id, shared_finance=shared_finance)
+        memories = self.list_authorized(profile, agent_id, shared_finance=shared_finance, limit=100)
+        current = next((item for item in memories if str(item.get("id")) == str(memory_id)), None)
+        clean = " ".join(str(content or "").split())
+        if current is None or not clean:
+            return False
+        metadata = dict(current.get("metadata") or {})
+        if expires_in_days:
+            metadata["expires_at"] = (datetime.now(timezone.utc) + timedelta(days=max(1, int(expires_in_days)))).isoformat()
+        else:
+            metadata.pop("expires_at", None)
+        try:
+            replacement = self.engine.add_memory(
+                profile=target,
+                content=clean,
+                memory_type=current.get("memory_type", "fact"),
+                importance=max(0.0, min(float(importance), 1.0)),
+                confidence=current.get("confidence", 1.0),
+                source="user_edit",
+                metadata=metadata,
+            )
+            if str(replacement.get("id")) != str(memory_id):
+                self.engine.forget_memory(str(memory_id))
+            return True
         except Exception:
             return False
 

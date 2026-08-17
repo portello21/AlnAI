@@ -44,6 +44,19 @@ def normalize_text(value: str) -> str:
     )
 
 
+def memory_not_expired(metadata: dict, *, now: datetime | None = None) -> bool:
+    expires_at = str((metadata or {}).get("expires_at") or "").strip()
+    if not expires_at:
+        return True
+    try:
+        expires = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        return expires > (now or datetime.now(timezone.utc))
+    except Exception:
+        return False
+
+
 def make_memory_id(
     profile: str,
     memory_type: str,
@@ -365,6 +378,8 @@ class MemoryEngine:
             except Exception:
                 metadata = {}
 
+            if active_only and not memory_not_expired(metadata):
+                continue
             output.append(
                 {
                     "id": row[0],

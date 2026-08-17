@@ -6,6 +6,7 @@ import core.app_shell_v8 as app_shell
 from core.config import Config
 from core.login_v9 import render_login_v9
 from core.session_restore_v9 import restore_session_from_request
+from core.observability import init_error_monitoring
 
 
 st.set_page_config(
@@ -16,6 +17,7 @@ st.set_page_config(
 )
 
 Config.validate()
+init_error_monitoring()
 restore_session_from_request()
 
 # V9 login fixes a race where the cookie-writing component was immediately

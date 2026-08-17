@@ -4,6 +4,7 @@ import streamlit as st
 
 from core.auth_v8 import ALLOWED_PROFILES, credential_version, verify_device_token
 from core.trusted_device_v9 import read_streamlit_context_cookie
+from core.supabase_auth import auth_available_for
 
 TRUST_COOKIE_NAME = "rog_ai_device"
 
@@ -31,6 +32,8 @@ def restore_session_from_request() -> bool:
     preliminary = verify_device_token(token, signing_secret)
     if not preliminary or preliminary.profile not in ALLOWED_PROFILES:
         return False
+    if auth_available_for(preliminary.profile):
+        return False
 
     password = _secret(f"{preliminary.profile.upper()}_PASSWORD")
     tag = credential_version(signing_secret, password)
@@ -47,4 +50,7 @@ def restore_session_from_request() -> bool:
     st.session_state.current_agent = "orchestrator"
     st.session_state.current_view = "chat"
     st.session_state.auth_restore_attempts = 3
+    st.session_state.auth_backend = "legacy"
+    st.session_state.auth_user_id = ""
+    st.session_state.is_admin = identity.profile.casefold() == "allan"
     return True

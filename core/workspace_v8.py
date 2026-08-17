@@ -52,6 +52,16 @@ def render_memory_view(profile: str, agent_id: str, memory_service, *, shared_fi
                 st.markdown(content)
                 st.caption(f"{memory_type} · importância {importance:.0%}")
             with right:
+                with st.popover("Editar", use_container_width=True):
+                    edited = st.text_area("Conteúdo", value=content, key=f"edit_memory_text_{memory_id[:16]}", max_chars=2000)
+                    edited_importance = st.slider("Importância", 0.0, 1.0, importance, 0.05, key=f"edit_memory_importance_{memory_id[:16]}")
+                    expiry = st.selectbox("Validade", ("Sem expiração", "30 dias", "90 dias", "365 dias"), key=f"edit_memory_expiry_{memory_id[:16]}")
+                    days = {"30 dias": 30, "90 dias": 90, "365 dias": 365}.get(expiry)
+                    if st.button("Salvar alteração", key=f"save_memory_{memory_id[:16]}", type="primary", use_container_width=True):
+                        if memory_service.edit_authorized(profile, agent_id, memory_id, content=edited, importance=edited_importance, expires_in_days=days, shared_finance=shared_finance):
+                            st.success("Memória atualizada.")
+                            st.rerun()
+                        st.error("Não foi possível atualizar essa memória.")
                 if st.button("Remover", key=f"forget_{memory_id[:16]}", use_container_width=True):
                     if memory_service.forget_authorized(
                         profile,
@@ -76,7 +86,7 @@ def render_documents_view(profile: str, agent_id: str, process_files, *, shared_
 
     files = st.file_uploader(
         "Adicionar à base de conhecimento",
-        type=["txt", "md", "csv", "json", "pdf", "docx", "png", "jpg", "jpeg", "webp"],
+        type=["txt", "md", "csv", "json", "pdf", "docx", "xlsx", "png", "jpg", "jpeg", "webp"],
         accept_multiple_files=True,
         key="v8_document_uploader",
         help="Até 10 arquivos por vez; limite de 20 MB por arquivo.",
@@ -111,7 +121,7 @@ def render_documents_view(profile: str, agent_id: str, process_files, *, shared_
                         st.error("Não foi possível excluir o documento.")
 
 
-def render_system_view(*, cookie_ready: bool, profile: str, feedback: dict) -> None:
+def render_system_view(*, cookie_ready: bool, profile: str, feedback: dict, is_admin: bool = False, auth_backend: str = "legacy", operations: dict | None = None) -> None:
     st.subheader("Sistema")
     st.caption("Diagnóstico seguro. Nenhuma chave ou credencial é exibida.")
 
@@ -120,6 +130,7 @@ def render_system_view(*, cookie_ready: bool, profile: str, feedback: dict) -> N
         ("NVIDIA NIM", status.get("nvidia", False), "Provider hospedado preferencial"),
         ("DeepSeek", status.get("deepseek", False), "Provider em nuvem"),
         ("Supabase", status.get("supabase", False), "Persistência remota opcional"),
+        ("Supabase Auth", status.get("supabase_auth", False), f"Autenticação atual: {auth_backend}"),
         ("Dispositivo confiável", cookie_ready, "Sessão persistente no navegador"),
     ]
 
@@ -141,7 +152,7 @@ def render_system_view(*, cookie_ready: bool, profile: str, feedback: dict) -> N
 
     st.info("Uma integração opcional indisponível não deve impedir a abertura da interface. O roteador tenta alternativas quando possível.")
 
-    if str(profile).casefold() == "allan":
+    if is_admin:
         from core.telemetry import runtime_snapshot
 
         snapshot = runtime_snapshot()
@@ -160,3 +171,18 @@ def render_system_view(*, cookie_ready: bool, profile: str, feedback: dict) -> N
         fcols[0].metric("Total", int(feedback.get("total", 0)))
         fcols[1].metric("Úteis", int(feedback.get("positive", 0)))
         fcols[2].metric("A melhorar", int(feedback.get("negative", 0)))
+        remote = operations or {}
+        st.markdown("#### Operação remota · últimos 7 dias")
+        if remote.get("available"):
+            rcols = st.columns(4)
+            rcols[0].metric("Chamadas API", int(remote.get("requests", 0)))
+            rcols[1].metric("Usuários ativos", int(remote.get("active_users", 0)))
+            duration = remote.get("average_duration_ms")
+            rcols[2].metric("Tempo médio", f"{duration} ms" if duration is not None else "Sem dados")
+            rcols[3].metric("Falhas/negações", int(remote.get("denied_or_failed_events", 0)))
+            if remote.get("estimated_cost") is not None:
+                st.caption(f"Custo estimado registrado: {float(remote['estimated_cost']):.6f}. Só aparece quando o provider fornece dados reais de uso.")
+            if remote.get("providers"):
+                st.caption("Providers: " + " · ".join(f"{name}: {count}" for name, count in sorted(remote["providers"].items())))
+        else:
+            st.caption("Sem dados operacionais remotos disponíveis.")

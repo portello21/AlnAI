@@ -14,6 +14,10 @@ from core.auth_v8 import (
     issue_device_token,
     verify_password,
 )
+from core.config import Config
+from core.supabase_auth import auth_available_for, sign_in_profile
+from core.operations_store import record_audit_async
+from core.observability import capture_product_event
 
 LOGGER = logging.getLogger("rog.v9.auth")
 TRUST_COOKIE_NAME = "rog_ai_device"
@@ -97,7 +101,19 @@ def render_login_v9(manager) -> None:
         submitted = st.form_submit_button("Entrar", type="primary", use_container_width=True)
 
     if submitted:
-        if not verify_password(profile, password, st.secrets):
+        blocked_until = float(st.session_state.get("login_blocked_until", 0.0) or 0.0)
+        if blocked_until > time.monotonic():
+            st.error("Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.")
+            return
+        supabase_identity = sign_in_profile(profile, password) if auth_available_for(profile) else None
+        legacy_allowed = Config.LEGACY_AUTH_FALLBACK and not auth_available_for(profile)
+        if not supabase_identity and not (legacy_allowed and verify_password(profile, password, st.secrets)):
+            failures = int(st.session_state.get("failed_login_attempts", 0)) + 1
+            st.session_state.failed_login_attempts = failures
+            if failures >= 5:
+                st.session_state.login_blocked_until = time.monotonic() + 300
+                st.session_state.failed_login_attempts = 0
+            record_audit_async(event_type="auth.login", outcome="denied", profile=profile, metadata={"auth_backend": "supabase" if auth_available_for(profile) else "legacy"})
             st.error("Perfil ou senha inválidos.")
             return
 
@@ -108,14 +124,25 @@ def render_login_v9(manager) -> None:
         st.session_state.current_agent = "orchestrator"
         st.session_state.current_view = "chat"
         st.session_state.auth_restore_attempts = 3
+        st.session_state.auth_backend = "supabase" if supabase_identity else "legacy"
+        st.session_state.auth_user_id = supabase_identity.user_id if supabase_identity else ""
+        st.session_state.auth_access_token = supabase_identity.access_token if supabase_identity else ""
+        st.session_state.auth_refresh_token = supabase_identity.refresh_token if supabase_identity else ""
+        st.session_state.is_admin = bool(supabase_identity.is_admin) if supabase_identity else profile.casefold() == "allan"
+        st.session_state.failed_login_attempts = 0
+        st.session_state.login_blocked_until = 0.0
+        record_audit_async(event_type="auth.login", outcome="success", user_id=supabase_identity.user_id if supabase_identity else "", profile=profile, metadata={"auth_backend": "supabase" if supabase_identity else "legacy"})
+        capture_product_event("login_success", user_id=supabase_identity.user_id if supabase_identity else "", properties={"auth_backend": "supabase" if supabase_identity else "legacy"})
 
-        persisted = _persist_trusted_device(manager, profile)
-        if not persisted:
+        persisted = _persist_trusted_device(manager, profile) if not supabase_identity else False
+        if not supabase_identity and not persisted:
             st.warning("Login realizado, mas este navegador não pôde ser marcado como dispositivo confiável.")
 
         st.rerun()
 
-    if _cookie_secret() and manager is not None:
+    if any(auth_available_for(item) for item in ALLOWED_PROFILES):
+        st.caption("Contas migradas usam autenticação individual Supabase. Perfis ainda não migrados podem usar o acesso legado quando autorizado.")
+    elif _cookie_secret() and manager is not None:
         st.caption(f"Este navegador será reconhecido por até {DEFAULT_DEVICE_TTL_DAYS} dias após um login válido.")
     else:
         st.caption("Login persistente indisponível: verifique DEVICE_COOKIE_SECRET e o componente de cookies.")

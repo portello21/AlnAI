@@ -5,12 +5,14 @@ import time
 from core.config import Config
 from core.provider_policy import ProviderHealthRegistry, provider_allowed
 from core.telemetry import record_runtime_event
+from core.rate_limit import SlidingWindowRateLimiter
 from providers.deepseek import chat_deepseek
 from providers.docker_model import chat_dmr, healthcheck_dmr
 from providers.nvidia import chat_nvidia
 
 LOCAL_MODEL = "docker.io/ai/qwen3:latest"
 HEALTH = ProviderHealthRegistry()
+PAID_PROVIDER_QUOTA = SlidingWindowRateLimiter(Config.PAID_PROVIDER_DAILY_REQUEST_LIMIT, 86_400)
 
 
 def is_local_model(model: str) -> bool:
@@ -93,6 +95,10 @@ def _deepseek(requested_model: str, messages: list, temperature: float, max_toke
     if not Config.DEEPSEEK_API or not HEALTH.can_attempt(provider):
         return None
     if not provider_allowed(provider, allow_paid=Config.ALLOW_PAID_PROVIDERS):
+        return None
+    quota_allowed, _ = PAID_PROVIDER_QUOTA.allow(provider)
+    if not quota_allowed:
+        HEALTH.failure(provider, "daily_budget")
         return None
     model = requested_model if str(requested_model).startswith("deepseek-") else "deepseek-chat"
     value = chat_deepseek(api_key=Config.DEEPSEEK_API, messages=messages, model=model, temperature=temperature, max_tokens=max_tokens or 4096, on_token=on_token)
