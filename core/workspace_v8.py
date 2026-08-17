@@ -205,3 +205,40 @@ def render_system_view(*, cookie_ready: bool, profile: str, feedback: dict, is_a
         else:
             st.caption("Sem dados operacionais remotos disponíveis.")
 
+def render_admin_view(*, access_token: str, current_user_id: str, feedback: dict, operations: dict | None = None) -> None:
+    from core.operations_store import admin_list_profiles, admin_set_profile_active
+    from core.telemetry import runtime_snapshot
+
+    st.subheader("Administração")
+    st.caption("Central exclusiva do Allan. As ações abaixo alteram dados reais e respeitam as regras de segurança do Supabase.")
+    profiles = admin_list_profiles(access_token)
+    st.markdown("#### Acesso da família")
+    if not profiles:
+        st.warning("Não foi possível carregar os perfis agora. Entre novamente e tente outra vez.")
+    for item in profiles:
+        label = str(item.get("profile") or "Perfil").title()
+        is_self = str(item.get("user_id") or "") == current_user_id
+        active = bool(item.get("active"))
+        with st.container(border=True):
+            left, right = st.columns([7, 3])
+            with left:
+                st.markdown(f"**{label}** · {str(item.get('role') or 'member').title()}")
+                state = "Acesso liberado" if active else "Acesso suspenso"
+                pending = " · troca de senha pendente" if item.get("password_change_required") else ""
+                st.caption(state + pending)
+            with right:
+                desired = not active
+                if st.button("Liberar acesso" if desired else "Suspender acesso", key=f"admin_active_{item.get('user_id')}", disabled=is_self, use_container_width=True, help="O administrador não pode suspender o próprio perfil." if is_self else None):
+                    if admin_set_profile_active(access_token, user_id=str(item.get("user_id") or ""), active=desired):
+                        st.success(f"Acesso de {label} atualizado.")
+                        st.rerun()
+                    st.error("Não foi possível atualizar o acesso.")
+
+    snapshot = runtime_snapshot()
+    remote = operations or {}
+    st.markdown("#### Operação")
+    cols = st.columns(3)
+    cols[0].metric("Requisições nesta sessão", int(snapshot.get("requests", 0)))
+    cols[1].metric("Feedbacks", int(feedback.get("total", 0)))
+    cols[2].metric("Chamadas em 7 dias", int(remote.get("requests", 0)) if remote.get("available") else "Sem dados")
+    st.caption("Somente métricas reais são mostradas. Conteúdo das conversas e senhas não aparecem aqui.")

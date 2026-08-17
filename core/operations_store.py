@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 
 from core.config import Config
 from core.supabase_optional import create_privileged_client
+import httpx
 
 LOGGER = logging.getLogger("rog.operations")
 
@@ -103,6 +104,40 @@ def list_user_profiles() -> list[dict]:
 def set_user_active(*, user_id: str, active: bool) -> bool:
     client = _client()
     if client is None or not user_id:
+        return False
+
+
+def admin_list_profiles(access_token: str) -> list[dict]:
+    """List family profiles through the signed-in admin JWT and RLS."""
+    if not access_token or not Config.SUPABASE_URL or not Config.SUPABASE_PUBLISHABLE_KEY:
+        return []
+    try:
+        response = httpx.get(
+            f"{Config.SUPABASE_URL.rstrip('/')}/rest/v1/rog_user_profiles",
+            headers={"apikey": Config.SUPABASE_PUBLISHABLE_KEY, "Authorization": f"Bearer {access_token}"},
+            params={"select": "user_id,profile,role,active,updated_at,password_change_required", "order": "profile.asc"},
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        rows = response.json()
+        return [row for row in rows if isinstance(row, dict)] if isinstance(rows, list) else []
+    except Exception:
+        return []
+
+
+def admin_set_profile_active(access_token: str, *, user_id: str, active: bool) -> bool:
+    """Activate or suspend a member after revalidating the server-side admin."""
+    if not access_token or not user_id:
+        return False
+    try:
+        from core.supabase_auth import validate_access_token
+        admin = validate_access_token(access_token)
+        client = _client()
+        if admin is None or not admin.is_admin or client is None or admin.user_id == user_id:
+            return False
+        response = client.table("rog_user_profiles").update({"active": bool(active), "updated_at": datetime.now(timezone.utc).isoformat()}).eq("user_id", user_id).execute()
+        return len(getattr(response, "data", None) or []) == 1
+    except Exception:
         return False
     try:
         response = client.table("rog_user_profiles").update({"active": bool(active), "updated_at": datetime.now(timezone.utc).isoformat()}).eq("user_id", user_id).execute()
