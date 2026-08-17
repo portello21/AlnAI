@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import httpx
 
 
@@ -11,6 +12,7 @@ def chat_nvidia(
     temperature: float = 0.2,
     max_tokens: int = 4096,
     timeout: float = 20.0,
+    on_token=None,
 ) -> str:
     """Call an OpenAI-compatible NVIDIA NIM endpoint.
 
@@ -28,16 +30,31 @@ def chat_nvidia(
         "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
+        "stream": on_token is not None,
     }
     try:
         limits = httpx.Limits(max_connections=4, max_keepalive_connections=2)
         request_timeout = httpx.Timeout(timeout, connect=min(5.0, timeout))
         with httpx.Client(timeout=request_timeout, limits=limits) as client:
-            response = client.post(
-                url,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                json=payload,
-            )
+            if on_token is not None:
+                chunks = []
+                with client.stream("POST", url, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json=payload) as response:
+                    response.raise_for_status()
+                    for line in response.iter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        raw = line[5:].strip()
+                        if not raw or raw == "[DONE]":
+                            continue
+                        data = json.loads(raw)
+                        choices = data.get("choices") or []
+                        token = str((choices[0].get("delta") or {}).get("content") or "") if choices else ""
+                        if token:
+                            chunks.append(token)
+                            on_token(token)
+                content = "".join(chunks).strip()
+                return content or "Erro: NVIDIA NIM retornou resposta vazia."
+            response = client.post(url, headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json=payload)
             response.raise_for_status()
             data = response.json()
         choices = data.get("choices") or []
