@@ -7,6 +7,59 @@ import streamlit as st
 from core.config import Config
 
 
+def render_creative_view(*, profile: str, user_id: str) -> None:
+    from core.media_budget import budget_snapshot, media_gallery
+    from providers.gemini_media import generate_image, generate_video
+
+    st.subheader("Estúdio Criativo")
+    st.caption("Geração privada com orçamento protegido. Nenhuma cobrança ocorre antes da confirmação.")
+    budget = budget_snapshot()
+    if budget.get("available"):
+        cols = st.columns(3)
+        cols[0].metric("Orçamento mensal", f"US$ {float(budget['settings'].get('monthly_limit_usd', 10)):.2f}")
+        cols[1].metric("Reservado/usado", f"US$ {float(budget.get('reserved_usd', 0)):.2f}")
+        cols[2].metric("Disponível", f"US$ {float(budget.get('remaining_usd', 0)):.2f}")
+
+    image_tab, video_tab, gallery_tab = st.tabs(("Imagem", "Vídeo", "Galeria"))
+    with image_tab:
+        st.markdown("#### Criar imagem")
+        prompt = st.text_area("Descreva a imagem", max_chars=4000, placeholder="Ex.: painel futurista roxo, elegante, fundo AMOLED…")
+        ratio = st.selectbox("Formato", ("1:1", "16:9", "9:16"), format_func=lambda value: {"1:1": "Quadrado", "16:9": "Paisagem", "9:16": "Vertical"}[value])
+        confirmed = st.checkbox("Confirmo o custo máximo estimado de US$ 0,02", key="confirm_image_cost")
+        if st.button("Gerar imagem", type="primary", disabled=not prompt.strip() or not confirmed, use_container_width=True):
+            with st.spinner("Criando e salvando a imagem com segurança…"):
+                result = generate_image(user_id=user_id, profile=profile, prompt=prompt, aspect_ratio=ratio)
+            if result.get("success"):
+                st.image(result["url"], caption=f"Imagem criada · custo US$ {result['cost_usd']:.2f}", use_container_width=True)
+                st.success("Imagem salva na galeria privada.")
+            else:
+                reasons = {"media_not_configured": "A geração paga ainda não foi ativada pelo administrador.", "paid_media_disabled": "O administrador pausou toda geração paga.", "daily_budget_exceeded": "O limite diário foi atingido.", "monthly_budget_exceeded": "O limite mensal foi atingido.", "profile_budget_exceeded": "A cota deste perfil foi atingida.", "image_disabled": "Imagens estão desativadas para este perfil."}
+                st.error(reasons.get(result.get("reason"), "Não foi possível gerar a imagem; nenhuma nova tentativa será cobrada automaticamente."))
+    with video_tab:
+        st.markdown("#### Criar vídeo curto")
+        st.info("Vídeo de 8 segundos em 720p. A geração pode levar alguns minutos e custa no máximo US$ 0,40.")
+        video_prompt = st.text_area("Ideia e roteiro do vídeo", max_chars=4000, placeholder="Cena, câmera, movimento, iluminação, sons e falas…")
+        video_confirmed = st.checkbox("Confirmo o custo máximo estimado de US$ 0,40", key="confirm_video_cost")
+        if st.button("Gerar vídeo · até US$ 0,40", type="primary", disabled=not video_prompt.strip() or not video_confirmed, use_container_width=True):
+            with st.spinner("Gerando o vídeo. Não feche esta página…"):
+                result = generate_video(user_id=user_id, profile=profile, prompt=video_prompt)
+            if result.get("success"):
+                st.video(result["url"])
+                st.success("Vídeo salvo na galeria privada.")
+            else:
+                st.error("O vídeo não foi gerado. O sistema não fará outra tentativa paga automaticamente.")
+    with gallery_tab:
+        items = media_gallery(user_id=user_id, profile=profile)
+        if not items:
+            st.caption("Nenhuma mídia criada neste perfil.")
+        for item in items:
+            if item.get("media_type") == "image" and item.get("url"):
+                st.image(item["url"], caption=f"{item.get('model')} · US$ {float(item.get('estimated_cost_usd') or 0):.2f}", use_container_width=True)
+            elif item.get("media_type") == "video" and item.get("url"):
+                st.video(item["url"])
+                st.caption(f"{item.get('model')} · US$ {float(item.get('estimated_cost_usd') or 0):.2f}")
+
+
 def render_memory_view(profile: str, agent_id: str, memory_service, *, shared_finance: bool) -> None:
     st.subheader("Memórias")
     scope_label = "financeiro compartilhado Allan ↔ Beatriz" if shared_finance else f"privado de {profile}"
@@ -242,3 +295,30 @@ def render_admin_view(*, access_token: str, current_user_id: str, feedback: dict
     cols[1].metric("Feedbacks", int(feedback.get("total", 0)))
     cols[2].metric("Chamadas em 7 dias", int(remote.get("requests", 0)) if remote.get("available") else "Sem dados")
     st.caption("Somente métricas reais são mostradas. Conteúdo das conversas e senhas não aparecem aqui.")
+
+    from core.media_budget import admin_update_budget, admin_update_quota, budget_snapshot
+    media = budget_snapshot()
+    st.markdown("#### Orçamento de imagem e vídeo")
+    if media.get("available"):
+        settings = media["settings"]
+        st.progress(min(1.0, float(media.get("reserved_usd", 0)) / 10.0), text=f"US$ {float(media.get('reserved_usd', 0)):.2f} de US$ 10,00 reservados/usados neste mês")
+        with st.expander("Configurar teto global"):
+            enabled = st.toggle("Permitir mídia paga", value=bool(settings.get("paid_media_enabled")), key="admin_paid_media")
+            daily = st.number_input("Teto diário (US$)", 0.0, 10.0, float(settings.get("daily_limit_usd", 1)), 0.25)
+            image_limit = st.number_input("Teto mensal de imagens (US$)", 0.0, 10.0, float(settings.get("image_limit_usd", 2)), 0.25)
+            video_limit = st.number_input("Teto mensal de vídeos (US$)", 0.0, 10.0, float(settings.get("video_limit_usd", 5)), 0.25)
+            if st.button("Salvar limites globais", type="primary", use_container_width=True):
+                if admin_update_budget(access_token, enabled=enabled, daily_limit_usd=daily, image_limit_usd=image_limit, video_limit_usd=video_limit):
+                    st.success("Limites atualizados. O teto mensal permanece fixo em US$ 10."); st.rerun()
+                st.error("Verifique se a soma dos tetos de imagem e vídeo não ultrapassa US$ 10.")
+        for quota in media.get("quotas", []):
+            with st.expander(str(quota.get("profile") or "perfil").title()):
+                amount = st.number_input("Cota mensal (US$)", 0.0, 10.0, float(quota.get("monthly_limit_usd", 0)), 0.5, key=f"quota_amount_{quota['profile']}")
+                images = st.toggle("Imagens", value=bool(quota.get("image_enabled")), key=f"quota_image_{quota['profile']}")
+                videos = st.toggle("Vídeos", value=bool(quota.get("video_enabled")), key=f"quota_video_{quota['profile']}")
+                if st.button("Salvar cota", key=f"save_quota_{quota['profile']}", use_container_width=True):
+                    if admin_update_quota(access_token, profile=quota["profile"], monthly_limit_usd=amount, image_enabled=images, video_enabled=videos):
+                        st.success("Cota atualizada."); st.rerun()
+                    st.error("Não foi possível atualizar a cota.")
+    else:
+        st.caption("O módulo de orçamento ainda não está disponível.")

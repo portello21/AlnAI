@@ -28,14 +28,14 @@ from core.profile_access import allowed_namespaces, write_namespace
 from core.response_jobs import cancel_response_job, consume_response_job, drain_response_tokens, response_job_status, start_response_job
 from core.supabase_auth import auth_available_for
 from core.ui_v8 import AGENT_META, inject_design_system, render_agent_header, render_brand, render_profile, render_welcome
-from core.workspace_v8 import render_admin_view, render_documents_view, render_memory_view, render_system_view
+from core.workspace_v8 import render_admin_view, render_creative_view, render_documents_view, render_memory_view, render_system_view
 
 LOGGER = logging.getLogger("rog.v8")
 TRUST_COOKIE_NAME = "rog_ai_device"
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_DIRECT_CONTEXT_CHARS = 12_000
 MAX_AUTH_RESTORE_ATTEMPTS = 3
-VALID_VIEWS = {"chat", "memories", "documents", "system", "admin"}
+VALID_VIEWS = {"chat", "memories", "documents", "creative", "system", "admin"}
 QUICK_ACTIONS = {
     "orchestrator": ("Organizar meu dia", "Resumir prioridades", "Planejar um projeto"),
     "personal": ("Montar minha rotina", "Comparar uma decisão", "Criar uma checklist"),
@@ -302,7 +302,7 @@ def render_sidebar(profile: str, agent_id: str, conversations: dict[str, list], 
             if st.button(f"{meta[0]}  {meta[1]}", key=f"v8_nav_{aid}", type="primary" if aid == agent_id and st.session_state.current_view == "chat" else "secondary", use_container_width=True, disabled=bool(st.session_state.busy)):
                 st.session_state.current_agent = aid; _goto("chat"); st.rerun()
         st.markdown('<div class="rog-section">Workspace</div>', unsafe_allow_html=True)
-        for view, label in (("chat", "💬  Conversa"), ("memories", "🧠  Memórias"), ("documents", "📎  Documentos"), ("system", "⚙  Sistema")):
+        for view, label in (("chat", "💬  Conversa"), ("memories", "🧠  Memórias"), ("documents", "📎  Documentos"), ("creative", "🎨  Estúdio Criativo"), ("system", "⚙  Sistema")):
             if st.button(label, key=f"v8_view_{view}", type="primary" if st.session_state.current_view == view else "secondary", use_container_width=True):
                 _goto(view); st.rerun()
         if st.session_state.get("is_admin") and st.button("🛡  Administração", key="v8_view_admin", type="primary" if st.session_state.current_view == "admin" else "secondary", use_container_width=True):
@@ -532,6 +532,7 @@ def run() -> None:
     shared_scope = bool(st.session_state.shared_finance_upload) and agent_id == "finance" and profile.lower() in {"allan", "beatriz"}
     if view == "memories": render_memory_view(profile, agent_id, _family_memory(), shared_finance=shared_scope); return
     if view == "documents": render_documents_view(profile, agent_id, _process_files, shared_finance=shared_scope); return
+    if view == "creative": render_creative_view(profile=profile, user_id=str(st.session_state.get("auth_user_id") or "")); return
     if view == "system":
         from core.supabase_auth import AuthIdentity
         auth_identity = AuthIdentity(user_id=str(st.session_state.get("auth_user_id") or ""), profile=profile, access_token=str(st.session_state.get("auth_access_token") or ""), is_admin=bool(st.session_state.get("is_admin")))

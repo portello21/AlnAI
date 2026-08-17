@@ -35,6 +35,8 @@ class Config:
     NVIDIA_API = _setting("NVIDIA_API_KEY")
     OPENAI_API = _setting("OPENAI_API_KEY")
     ANTHROPIC_API = _setting("ANTHROPIC_API_KEY")
+    GEMINI_API = _setting("GEMINI_API_KEY")
+    GEMINI_VIDEO_MODEL = _setting("GEMINI_VIDEO_MODEL", "veo-3.1-lite-generate-preview")
     SUPABASE_URL = _setting("SUPABASE_URL")
     SUPABASE_PUBLISHABLE_KEY = _setting("SUPABASE_PUBLISHABLE_KEY", _setting("SUPABASE_ANON_KEY"))
     SUPABASE_SERVICE_ROLE_KEY = _setting("SUPABASE_SERVICE_ROLE_KEY", _setting("SUPABASE_KEY"))
@@ -79,6 +81,7 @@ class Config:
     OBSERVABILITY_HASH_SECRET = _setting("OBSERVABILITY_HASH_SECRET", _setting("DEVICE_COOKIE_SECRET"))
     AUDIT_RETENTION_DAYS = int(_float_setting("ROG_AUDIT_RETENTION_DAYS", 90))
     USAGE_RETENTION_DAYS = int(_float_setting("ROG_USAGE_RETENTION_DAYS", 180))
+    MEDIA_MONTHLY_LIMIT_USD = min(10.0, _float_setting("ROG_MEDIA_MONTHLY_LIMIT_USD", 10.0))
 
     @classmethod
     def profile_auth_email(cls, profile: str) -> str:
@@ -92,6 +95,7 @@ class Config:
             "nvidia": bool(cls.NVIDIA_API and cls.NVIDIA_MODEL),
             "openai": bool(cls.OPENAI_API and cls.ALLOW_PAID_PROVIDERS),
             "anthropic": bool(cls.ANTHROPIC_API and cls.ALLOW_PAID_PROVIDERS),
+            "gemini_media": bool(cls.GEMINI_API and cls.ALLOW_PAID_PROVIDERS),
             "supabase": bool(cls.SUPABASE_URL and cls.SUPABASE_KEY),
             "supabase_auth": bool(cls.SUPABASE_AUTH_ENABLED and cls.SUPABASE_URL and cls.SUPABASE_PUBLISHABLE_KEY),
             "telegram": bool(cls.TELEGRAM_TOKEN),
