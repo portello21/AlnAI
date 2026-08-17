@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.config import Config
-from core.supabase_optional import create_optional_client
+from core.supabase_optional import create_privileged_client
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -73,7 +73,7 @@ class MemoryEngine:
         self.client = None
 
         try:
-            self.client = create_optional_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
+            self.client = create_privileged_client(Config.SUPABASE_URL, Config.SUPABASE_SERVICE_ROLE_KEY)
         except Exception:
             self.client = None
 

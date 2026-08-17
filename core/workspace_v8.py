@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import streamlit as st
 
 from core.config import Config
@@ -19,6 +21,25 @@ def render_memory_view(profile: str, agent_id: str, memory_service, *, shared_fi
     if not memories:
         st.info("Nenhuma memória ativa neste espaço.")
         return
+
+    export_rows = [
+        {
+            "type": item.get("memory_type", "fact"),
+            "content": item.get("content", ""),
+            "importance": item.get("importance", 0.5),
+            "created_at": item.get("created_at"),
+            "updated_at": item.get("updated_at"),
+        }
+        for item in memories
+    ]
+    st.download_button(
+        "Exportar minhas memórias",
+        data=json.dumps(export_rows, ensure_ascii=False, indent=2),
+        file_name=f"rog-ai-memorias-{profile.casefold()}.json",
+        mime="application/json",
+        use_container_width=True,
+        help="Exporta somente o espaço de memória atualmente visível.",
+    )
 
     for memory in memories:
         memory_id = str(memory.get("id", ""))
@@ -96,6 +117,7 @@ def render_system_view(*, cookie_ready: bool, profile: str, feedback: dict) -> N
 
     status = Config.status()
     rows = [
+        ("NVIDIA NIM", status.get("nvidia", False), "Provider hospedado preferencial"),
         ("DeepSeek", status.get("deepseek", False), "Provider em nuvem"),
         ("Supabase", status.get("supabase", False), "Persistência remota opcional"),
         ("Dispositivo confiável", cookie_ready, "Sessão persistente no navegador"),
