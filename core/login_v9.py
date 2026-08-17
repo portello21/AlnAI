@@ -15,7 +15,7 @@ from core.auth_v8 import (
     verify_password,
 )
 from core.config import Config
-from core.supabase_auth import auth_available_for, sign_in_profile
+from core.supabase_auth import auth_available_for, migrate_legacy_password, sign_in_profile
 from core.operations_store import record_audit_async
 from core.observability import capture_product_event
 
@@ -105,8 +105,15 @@ def render_login_v9(manager) -> None:
         if blocked_until > time.monotonic():
             st.error("Muitas tentativas. Aguarde alguns minutos antes de tentar novamente.")
             return
-        supabase_identity = sign_in_profile(profile, password) if auth_available_for(profile) else None
-        legacy_allowed = Config.LEGACY_AUTH_FALLBACK and not auth_available_for(profile)
+        supabase_configured = auth_available_for(profile)
+        supabase_identity = sign_in_profile(profile, password) if supabase_configured else None
+        legacy_valid = Config.LEGACY_AUTH_FALLBACK and verify_password(profile, password, st.secrets)
+        migrated = False
+        if not supabase_identity and supabase_configured and legacy_valid:
+            migrated = migrate_legacy_password(profile, password)
+            if migrated:
+                supabase_identity = sign_in_profile(profile, password)
+        legacy_allowed = Config.LEGACY_AUTH_FALLBACK and not supabase_configured
         if not supabase_identity and not (legacy_allowed and verify_password(profile, password, st.secrets)):
             failures = int(st.session_state.get("failed_login_attempts", 0)) + 1
             st.session_state.failed_login_attempts = failures
@@ -132,6 +139,8 @@ def render_login_v9(manager) -> None:
         st.session_state.failed_login_attempts = 0
         st.session_state.login_blocked_until = 0.0
         record_audit_async(event_type="auth.login", outcome="success", user_id=supabase_identity.user_id if supabase_identity else "", profile=profile, metadata={"auth_backend": "supabase" if supabase_identity else "legacy"})
+        if migrated:
+            record_audit_async(event_type="auth.password_migrated", outcome="success", user_id=supabase_identity.user_id, profile=profile, metadata={"auth_backend": "supabase"})
         capture_product_event("login_success", user_id=supabase_identity.user_id if supabase_identity else "", properties={"auth_backend": "supabase" if supabase_identity else "legacy"})
 
         persisted = _persist_trusted_device(manager, profile) if not supabase_identity else False

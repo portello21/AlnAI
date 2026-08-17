@@ -32,6 +32,56 @@ def auth_available_for(profile: str) -> bool:
     )
 
 
+def _admin_headers(key: str) -> dict[str, str]:
+    headers = {"apikey": key, "Accept": "application/json"}
+    if not key.startswith("sb_secret_"):
+        headers["Authorization"] = f"Bearer {key}"
+    return headers
+
+
+def migrate_legacy_password(profile: str, password: str) -> bool:
+    """Synchronize one verified legacy password to its exact Supabase user.
+
+    The caller must verify the legacy password before invoking this function.
+    Matching also requires immutable app_metadata for the requested profile,
+    preventing an email configuration mistake from changing another account.
+    """
+    profile = normalize_profile(profile)
+    email = Config.profile_auth_email(profile).strip().casefold() if profile else ""
+    key = str(Config.SUPABASE_SERVICE_ROLE_KEY or "").strip()
+    if not profile or not email or not password or not key:
+        return False
+    headers = _admin_headers(key)
+    try:
+        response = httpx.get(
+            urljoin(Config.SUPABASE_URL.rstrip("/") + "/", "auth/v1/admin/users"),
+            headers=headers,
+            params={"page": "1", "per_page": "1000"},
+            timeout=5.0,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        users = payload.get("users", []) if isinstance(payload, dict) else []
+        matches = [
+            user for user in users
+            if isinstance(user, dict)
+            and str(user.get("email") or "").strip().casefold() == email
+            and normalize_profile((user.get("app_metadata") or {}).get("rog_profile")) == profile
+        ]
+        if len(matches) != 1 or not matches[0].get("id"):
+            return False
+        update = httpx.put(
+            urljoin(Config.SUPABASE_URL.rstrip("/") + "/", f"auth/v1/admin/users/{matches[0]['id']}"),
+            headers={**headers, "Content-Type": "application/json"},
+            json={"password": password},
+            timeout=5.0,
+        )
+        update.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
 def _confirm_active(identity: AuthIdentity | None) -> AuthIdentity | None:
     if identity is None:
         return None

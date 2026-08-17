@@ -3,7 +3,7 @@ import json
 from types import SimpleNamespace
 
 import core.supabase_auth as supabase_auth
-from core.supabase_auth import AuthIdentity, _confirm_active, _identity_from_user
+from core.supabase_auth import AuthIdentity, _confirm_active, _identity_from_user, migrate_legacy_password
 from core.supabase_optional import is_publishable_key
 
 
@@ -57,3 +57,56 @@ def test_modern_secret_key_checks_profile_without_bearer_header(monkeypatch):
     assert captured["headers"] == {"apikey": "sb_secret_server", "Accept": "application/json"}
     assert "Authorization" not in captured["headers"]
     assert captured["params"]["profile"] == "eq.allan"
+
+
+def test_legacy_password_migration_updates_only_exact_metadata_match(monkeypatch):
+    monkeypatch.setattr(supabase_auth.Config, "SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setattr(supabase_auth.Config, "SUPABASE_SERVICE_ROLE_KEY", "sb_secret_server")
+    monkeypatch.setattr(supabase_auth.Config, "profile_auth_email", lambda profile: "allan@example.test")
+    calls = []
+
+    class Response:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self.payload
+
+    monkeypatch.setattr(supabase_auth.httpx, "get", lambda *args, **kwargs: Response({"users": [
+        {"id": "user-1", "email": "allan@example.test", "app_metadata": {"rog_profile": "allan", "rog_role": "admin"}},
+        {"id": "user-2", "email": "other@example.test", "app_metadata": {"rog_profile": "beatriz"}},
+    ]}))
+
+    def fake_put(url, **kwargs):
+        calls.append((url, kwargs))
+        return Response({"id": "user-1"})
+
+    monkeypatch.setattr(supabase_auth.httpx, "put", fake_put)
+
+    assert migrate_legacy_password("Allan", "new-secret")
+    assert len(calls) == 1
+    assert calls[0][0].endswith("/auth/v1/admin/users/user-1")
+    assert calls[0][1]["json"] == {"password": "new-secret"}
+    assert calls[0][1]["headers"]["apikey"] == "sb_secret_server"
+    assert "Authorization" not in calls[0][1]["headers"]
+
+
+def test_legacy_password_migration_refuses_email_without_matching_profile(monkeypatch):
+    monkeypatch.setattr(supabase_auth.Config, "SUPABASE_URL", "https://project.supabase.co")
+    monkeypatch.setattr(supabase_auth.Config, "SUPABASE_SERVICE_ROLE_KEY", "sb_secret_server")
+    monkeypatch.setattr(supabase_auth.Config, "profile_auth_email", lambda profile: "allan@example.test")
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {"users": [{"id": "wrong", "email": "allan@example.test", "app_metadata": {"rog_profile": "beatriz"}}]}
+
+    monkeypatch.setattr(supabase_auth.httpx, "get", lambda *args, **kwargs: Response())
+    monkeypatch.setattr(supabase_auth.httpx, "put", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not update")))
+
+    assert not migrate_legacy_password("Allan", "new-secret")
