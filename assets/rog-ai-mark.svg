@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">ROG AI</title>
+  <defs><linearGradient id="g" x1="8" y1="8" x2="56" y2="56" gradientUnits="userSpaceOnUse"><stop stop-color="#C4B5FD"/><stop offset=".48" stop-color="#8B5CF6"/><stop offset="1" stop-color="#22D3EE"/></linearGradient></defs>
+  <path fill="#0E1020" stroke="#6D5BD0" stroke-width="2" d="M32 3 57 17v30L32 61 7 47V17z"/>
+  <path fill="url(#g)" d="m18 40 7-21h17l6 7-7 7 7 12H37l-6-11-3 11H16l8-7h14l-3-6H24l-3 8z"/>
+  <circle cx="46" cy="18" r="3" fill="#67E8F9"/>
+</svg>

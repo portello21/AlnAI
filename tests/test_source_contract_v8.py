@@ -45,3 +45,16 @@ def test_app_is_only_a_bootstrap_shell():
 def test_collapsed_sidebar_has_current_streamlit_reopen_control():
     assert 'data-testid="stSidebarCollapsed"' in UI
     assert 'initial_sidebar_state="expanded"' in APP
+
+
+def test_permanent_navigation_does_not_depend_on_sidebar():
+    assert 'key="rog_top_nav"' in SHELL
+    assert "render_navigation_bar(profile, agent_id, conversations, manager)" in SHELL
+    for action in ("Assistente", "Memórias", "Documentos", "Sistema", "Nova conversa", "Trocar perfil", "Sair"):
+        assert action in SHELL
+
+
+def test_original_brand_assets_exist():
+    assert (ROOT / "assets" / "rog-ai-mark.svg").is_file()
+    assert (ROOT / "assets" / "rog-ai-core.webp").is_file()
+    assert "rog-ai-core.webp" in UI
