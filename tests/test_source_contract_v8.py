@@ -72,3 +72,10 @@ def test_sidebar_uses_clean_text_labels():
     assert 'st.button(meta[1], key=f"v8_nav_{aid}"' in SHELL
     assert '("chat", "Conversa")' in SHELL
     assert 'initial_sidebar_state="auto"' in APP
+
+
+def test_top_menu_uses_persistent_panel_instead_of_fixed_bar_popover():
+    assert 'st.toggle("Menu", key="v8_top_menu_open")' in SHELL
+    assert 'key="rog_top_menu_panel"' in SHELL
+    assert 'with st.popover("Menu"' not in SHELL
+    assert "st.session_state.v8_top_menu_open = False" in SHELL
