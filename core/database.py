@@ -7,7 +7,7 @@ import threading
 import time
 
 from core.config import Config
-from core.supabase_optional import create_optional_client
+from core.supabase_optional import create_privileged_client
 
 LOGGER = logging.getLogger("rog.persistence")
 
@@ -22,7 +22,7 @@ class PersistenceManager:
         self._remote_blocked_until = 0.0
         self._remote_refresh_started = False
         try:
-            self.client = create_optional_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
+            self.client = create_privileged_client(Config.SUPABASE_URL, Config.SUPABASE_SERVICE_ROLE_KEY)
         except Exception as exc:
             LOGGER.warning("Supabase initialization failed: %s", type(exc).__name__)
         self._init_sqlite()
