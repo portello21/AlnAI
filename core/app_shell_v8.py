@@ -26,6 +26,7 @@ from core.database import PersistenceManager
 from core.memory_service_v8 import FamilyMemoryService
 from core.profile_access import allowed_namespaces, write_namespace
 from core.response_jobs import cancel_response_job, consume_response_job, drain_response_tokens, response_job_status, start_response_job
+from core.supabase_auth import auth_available_for
 from core.ui_v8 import AGENT_META, inject_design_system, render_agent_header, render_brand, render_profile, render_welcome
 from core.workspace_v8 import render_documents_view, render_memory_view, render_system_view
 
@@ -55,6 +56,12 @@ def _persistence() -> PersistenceManager:
 @st.cache_resource
 def _family_memory() -> FamilyMemoryService:
     return FamilyMemoryService()
+
+
+@st.cache_data(ttl=60)
+def _remote_operations_summary() -> dict:
+    from core.operations_store import operations_summary
+    return operations_summary(days=7)
 
 
 def _cookie_secret() -> str:
@@ -94,6 +101,11 @@ def init_state() -> None:
     st.session_state.setdefault("busy", False)
     st.session_state.setdefault("active_response_job", None)
     st.session_state.setdefault("streamed_response", "")
+    st.session_state.setdefault("auth_backend", "")
+    st.session_state.setdefault("auth_user_id", "")
+    st.session_state.setdefault("auth_access_token", "")
+    st.session_state.setdefault("auth_refresh_token", "")
+    st.session_state.setdefault("is_admin", False)
     st.session_state.setdefault("auth_restore_attempts", 0)
     st.session_state.setdefault("shared_finance_upload", False)
 
@@ -103,7 +115,7 @@ def clear_private_state(*, preserve_restore_attempts: bool = True) -> None:
     active_job = st.session_state.get("active_response_job")
     if isinstance(active_job, dict):
         cancel_response_job(job_id=active_job.get("id", ""), profile=active_job.get("profile", ""), agent_id=active_job.get("agent_id", ""))
-    for key in ("authenticated", "current_profile", "current_agent", "current_view", "conversations", "conversations_by_profile", "memory_by_profile", "long_memory", "busy", "active_response_job", "streamed_response", "processed_events", "shared_finance_upload"):
+    for key in ("authenticated", "current_profile", "current_agent", "current_view", "conversations", "conversations_by_profile", "memory_by_profile", "long_memory", "busy", "active_response_job", "streamed_response", "auth_backend", "auth_user_id", "auth_access_token", "auth_refresh_token", "is_admin", "processed_events", "shared_finance_upload"):
         st.session_state.pop(key, None)
     st.session_state.authenticated = False
     st.session_state.current_profile = None
@@ -134,6 +146,8 @@ def _restore_trusted_device(manager) -> None:
     preliminary = verify_device_token(token, secret)
     if not preliminary:
         return
+    if auth_available_for(preliminary.profile):
+        return
     tag = _credential_tag(preliminary.profile)
     identity = verify_device_token(token, secret, expected_credential_tag=tag)
     if identity and identity.profile in ALLOWED_PROFILES:
@@ -142,6 +156,9 @@ def _restore_trusted_device(manager) -> None:
         st.session_state.current_agent = "orchestrator"
         st.session_state.current_view = "chat"
         st.session_state.auth_restore_attempts = MAX_AUTH_RESTORE_ATTEMPTS
+        st.session_state.auth_backend = "legacy"
+        st.session_state.auth_user_id = ""
+        st.session_state.is_admin = identity.profile.casefold() == "allan"
 
 
 def _trust_current_device(manager, profile: str) -> None:
@@ -458,7 +475,7 @@ def _render_chat(profile: str, agent_id: str, conversations: dict[str, list]) ->
     if st.session_state.busy:
         _render_active_response(profile, agent_id, conversations)
     audio_ready = importlib.util.find_spec("whisper") is not None
-    submission = st.chat_input("Mensagem para o ROG AI…", key="v8_chat_input", disabled=bool(st.session_state.busy), accept_file="multiple", file_type=["txt","md","csv","json","pdf","docx","png","jpg","jpeg","webp"], max_upload_size=20, accept_audio=audio_ready)
+    submission = st.chat_input("Mensagem para o ROG AI…", key="v8_chat_input", disabled=bool(st.session_state.busy), accept_file="multiple", file_type=["txt","md","csv","json","pdf","docx","xlsx","png","jpg","jpeg","webp"], max_upload_size=20, accept_audio=audio_ready)
     if submission is not None: process_submission(profile, agent_id, conversations, submission)
 
 
@@ -474,5 +491,5 @@ def run() -> None:
     shared_scope = bool(st.session_state.shared_finance_upload) and agent_id == "finance" and profile.lower() in {"allan", "beatriz"}
     if view == "memories": render_memory_view(profile, agent_id, _family_memory(), shared_finance=shared_scope); return
     if view == "documents": render_documents_view(profile, agent_id, _process_files, shared_finance=shared_scope); return
-    if view == "system": render_system_view(cookie_ready=bool(_cookie_secret() and manager), profile=profile, feedback=_persistence().feedback_summary(profile)); return
+    if view == "system": render_system_view(cookie_ready=bool(_cookie_secret() and manager), profile=profile, feedback=_persistence().feedback_summary(profile), is_admin=bool(st.session_state.get("is_admin")), auth_backend=str(st.session_state.get("auth_backend") or "legacy"), operations=_remote_operations_summary() if st.session_state.get("is_admin") else {}); return
     _render_chat(profile, agent_id, conversations)
