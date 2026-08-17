@@ -63,9 +63,9 @@ def test_temporary_password_marks_exact_user_for_first_access_change(monkeypatch
     assert captured["json"]["app_metadata"]["rog_password_change_required"] is True
 
 
-def test_modern_secret_key_checks_profile_without_bearer_header(monkeypatch):
+def test_active_profile_check_uses_user_jwt_and_publishable_key(monkeypatch):
     monkeypatch.setattr(supabase_auth.Config, "SUPABASE_URL", "https://project.supabase.co")
-    monkeypatch.setattr(supabase_auth.Config, "SUPABASE_SERVICE_ROLE_KEY", "sb_secret_server")
+    monkeypatch.setattr(supabase_auth.Config, "SUPABASE_PUBLISHABLE_KEY", "sb_publishable_client")
     captured = {}
 
     class Response:
@@ -85,8 +85,8 @@ def test_modern_secret_key_checks_profile_without_bearer_header(monkeypatch):
     confirmed = _confirm_active(identity)
 
     assert confirmed is not None and confirmed.is_admin
-    assert captured["headers"] == {"apikey": "sb_secret_server", "Accept": "application/json"}
-    assert "Authorization" not in captured["headers"]
+    assert captured["headers"]["apikey"] == "sb_publishable_client"
+    assert captured["headers"]["Authorization"] == "Bearer user-jwt"
     assert captured["params"]["profile"] == "eq.allan"
 
 
