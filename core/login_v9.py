@@ -136,6 +136,7 @@ def render_login_v9(manager) -> None:
         st.session_state.auth_access_token = supabase_identity.access_token if supabase_identity else ""
         st.session_state.auth_refresh_token = supabase_identity.refresh_token if supabase_identity else ""
         st.session_state.is_admin = bool(supabase_identity.is_admin) if supabase_identity else profile.casefold() == "allan"
+        st.session_state.password_change_required = bool(supabase_identity.password_change_required) if supabase_identity else False
         st.session_state.failed_login_attempts = 0
         st.session_state.login_blocked_until = 0.0
         record_audit_async(event_type="auth.login", outcome="success", user_id=supabase_identity.user_id if supabase_identity else "", profile=profile, metadata={"auth_backend": "supabase" if supabase_identity else "legacy"})
@@ -155,3 +156,4 @@ def render_login_v9(manager) -> None:
         st.caption(f"Este navegador será reconhecido por até {DEFAULT_DEVICE_TTL_DAYS} dias após um login válido.")
     else:
         st.caption("Login persistente indisponível: verifique DEVICE_COOKIE_SECRET e o componente de cookies.")
+
