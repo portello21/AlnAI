@@ -106,6 +106,8 @@ def init_state() -> None:
     st.session_state.setdefault("auth_access_token", "")
     st.session_state.setdefault("auth_refresh_token", "")
     st.session_state.setdefault("is_admin", False)
+    st.session_state.setdefault("password_change_required", False)
+    st.session_state.setdefault("generated_temporary_password", None)
     st.session_state.setdefault("auth_restore_attempts", 0)
     st.session_state.setdefault("shared_finance_upload", False)
 
@@ -115,7 +117,7 @@ def clear_private_state(*, preserve_restore_attempts: bool = True) -> None:
     active_job = st.session_state.get("active_response_job")
     if isinstance(active_job, dict):
         cancel_response_job(job_id=active_job.get("id", ""), profile=active_job.get("profile", ""), agent_id=active_job.get("agent_id", ""))
-    for key in ("authenticated", "current_profile", "current_agent", "current_view", "conversations", "conversations_by_profile", "memory_by_profile", "long_memory", "busy", "active_response_job", "streamed_response", "auth_backend", "auth_user_id", "auth_access_token", "auth_refresh_token", "is_admin", "processed_events", "shared_finance_upload"):
+    for key in ("authenticated", "current_profile", "current_agent", "current_view", "conversations", "conversations_by_profile", "memory_by_profile", "long_memory", "busy", "active_response_job", "streamed_response", "auth_backend", "auth_user_id", "auth_access_token", "auth_refresh_token", "is_admin", "password_change_required", "generated_temporary_password", "processed_events", "shared_finance_upload"):
         st.session_state.pop(key, None)
     st.session_state.authenticated = False
     st.session_state.current_profile = None
@@ -484,6 +486,34 @@ def run() -> None:
     if not st.session_state.authenticated or st.session_state.current_profile not in ALLOWED_PROFILES:
         clear_private_state(preserve_restore_attempts=True); render_login(manager); st.stop()
     profile = st.session_state.current_profile
+    if st.session_state.get("password_change_required"):
+        from core.supabase_auth import AuthIdentity, complete_required_password_change
+        st.title("Crie sua nova senha")
+        st.caption("Esta senha substituirá a temporária. Use pelo menos 12 caracteres.")
+        with st.form("required_password_change"):
+            password = st.text_input("Nova senha", type="password")
+            confirmation = st.text_input("Confirme a nova senha", type="password")
+            submitted = st.form_submit_button("Salvar nova senha", type="primary", use_container_width=True)
+        if submitted:
+            if len(password) < 12:
+                st.error("Use pelo menos 12 caracteres.")
+            elif password != confirmation:
+                st.error("As duas senhas não são iguais.")
+            else:
+                identity = AuthIdentity(
+                    user_id=str(st.session_state.get("auth_user_id") or ""),
+                    profile=profile,
+                    access_token=str(st.session_state.get("auth_access_token") or ""),
+                    is_admin=bool(st.session_state.get("is_admin")),
+                    password_change_required=True,
+                )
+                if complete_required_password_change(identity, password):
+                    st.session_state.password_change_required = False
+                    st.success("Senha alterada com sucesso.")
+                    st.rerun()
+                else:
+                    st.error("Não foi possível alterar a senha. Saia, entre novamente com a senha temporária e tente outra vez.")
+        st.stop()
     agent_id = st.session_state.current_agent if st.session_state.current_agent in RUNTIME_AGENTS else "orchestrator"
     view = st.session_state.current_view if st.session_state.current_view in VALID_VIEWS else "chat"
     st.session_state.current_agent = agent_id; st.session_state.current_view = view; conversations = profile_conversations(profile)
@@ -491,5 +521,9 @@ def run() -> None:
     shared_scope = bool(st.session_state.shared_finance_upload) and agent_id == "finance" and profile.lower() in {"allan", "beatriz"}
     if view == "memories": render_memory_view(profile, agent_id, _family_memory(), shared_finance=shared_scope); return
     if view == "documents": render_documents_view(profile, agent_id, _process_files, shared_finance=shared_scope); return
-    if view == "system": render_system_view(cookie_ready=bool(_cookie_secret() and manager), profile=profile, feedback=_persistence().feedback_summary(profile), is_admin=bool(st.session_state.get("is_admin")), auth_backend=str(st.session_state.get("auth_backend") or "legacy"), operations=_remote_operations_summary() if st.session_state.get("is_admin") else {}); return
+    if view == "system":
+        from core.supabase_auth import AuthIdentity
+        auth_identity = AuthIdentity(user_id=str(st.session_state.get("auth_user_id") or ""), profile=profile, access_token=str(st.session_state.get("auth_access_token") or ""), is_admin=bool(st.session_state.get("is_admin")))
+        render_system_view(cookie_ready=bool(_cookie_secret() and manager), profile=profile, feedback=_persistence().feedback_summary(profile), is_admin=bool(st.session_state.get("is_admin")), auth_backend=str(st.session_state.get("auth_backend") or "legacy"), operations=_remote_operations_summary() if st.session_state.get("is_admin") else {}, auth_identity=auth_identity); return
     _render_chat(profile, agent_id, conversations)
+
