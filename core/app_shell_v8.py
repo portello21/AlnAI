@@ -28,6 +28,7 @@ from core.memory_service_v8 import FamilyMemoryService
 from core.profile_access import allowed_namespaces, write_namespace
 from core.response_jobs import cancel_response_job, consume_response_job, drain_response_tokens, response_job_status, start_response_job
 from core.supabase_auth import auth_available_for
+from core.session_restore_v9 import restore_supabase_session_token
 from core.ui_v8 import AGENT_META, MARK_SVG, inject_design_system, render_agent_header, render_brand, render_profile, render_welcome
 from core.workspace_v8 import render_admin_view, render_creative_view, render_documents_view, render_memory_view, render_system_view
 
@@ -145,6 +146,8 @@ def _restore_trusted_device(manager) -> None:
     except Exception:
         token = None
     if not token:
+        return
+    if restore_supabase_session_token(str(token), secret):
         return
     # The token tells us a claimed profile only after its HMAC is valid. We
     # first verify signature/time, then require the current password-derived tag.
