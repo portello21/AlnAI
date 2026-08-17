@@ -20,7 +20,7 @@ def test_chat_has_attachment_limits():
 
 def test_python_uses_agent_runtime():
     assert "from core.agent_runtime import AGENTS as RUNTIME_AGENTS, execute_agent" in SHELL
-    assert "execute_agent(" in SHELL
+    assert "target=execute_agent" in SHELL
 
 
 def test_invalid_components_v2_generic_callback_is_absent():

@@ -69,7 +69,7 @@ def _local(requested_model: str, messages: list, temperature: float, max_tokens,
     return _finish(chat_local(messages, temperature, max_tokens), provider, requested_model, "qwen3", fallback)
 
 
-def _nvidia(requested_model: str, messages: list, temperature: float, max_tokens, fallback: bool) -> dict | None:
+def _nvidia(requested_model: str, messages: list, temperature: float, max_tokens, fallback: bool, on_token=None) -> dict | None:
     provider = "nvidia"
     if not Config.status().get("nvidia") or not HEALTH.can_attempt(provider):
         return None
@@ -83,18 +83,19 @@ def _nvidia(requested_model: str, messages: list, temperature: float, max_tokens
         temperature,
         max_tokens or 4096,
         timeout=Config.NVIDIA_TIMEOUT_SECONDS,
+        on_token=on_token,
     )
     return _finish(value, provider, requested_model, Config.NVIDIA_MODEL, fallback)
 
 
-def _deepseek(requested_model: str, messages: list, temperature: float, max_tokens, fallback: bool) -> dict | None:
+def _deepseek(requested_model: str, messages: list, temperature: float, max_tokens, fallback: bool, on_token=None) -> dict | None:
     provider = "deepseek"
     if not Config.DEEPSEEK_API or not HEALTH.can_attempt(provider):
         return None
     if not provider_allowed(provider, allow_paid=Config.ALLOW_PAID_PROVIDERS):
         return None
     model = requested_model if str(requested_model).startswith("deepseek-") else "deepseek-chat"
-    value = chat_deepseek(api_key=Config.DEEPSEEK_API, messages=messages, model=model, temperature=temperature, max_tokens=max_tokens or 4096)
+    value = chat_deepseek(api_key=Config.DEEPSEEK_API, messages=messages, model=model, temperature=temperature, max_tokens=max_tokens or 4096, on_token=on_token)
     return _finish(value, provider, requested_model, model, fallback)
 
 
@@ -119,7 +120,7 @@ def attempt_order(requested_model: str) -> tuple[str, ...]:
     return ("nvidia", "local", "deepseek")
 
 
-def chat_with_metadata(model: str, messages: list, temperature: float = 0.2, max_tokens=None) -> dict:
+def chat_with_metadata(model: str, messages: list, temperature: float = 0.2, max_tokens=None, on_token=None) -> dict:
     requested_model = str(model or "auto")
     attempted: list[str] = []
     failures: list[dict[str, str]] = []
@@ -129,9 +130,9 @@ def chat_with_metadata(model: str, messages: list, temperature: float = 0.2, max
         if candidate == "local":
             result = _local(requested_model, messages, temperature, max_tokens, fallback)
         elif candidate == "nvidia":
-            result = _nvidia(requested_model, messages, temperature, max_tokens, fallback)
+            result = _nvidia(requested_model, messages, temperature, max_tokens, fallback, on_token)
         else:
-            result = _deepseek(requested_model, messages, temperature, max_tokens, fallback)
+            result = _deepseek(requested_model, messages, temperature, max_tokens, fallback, on_token)
         if result is None:
             continue
         attempted.append(candidate)
