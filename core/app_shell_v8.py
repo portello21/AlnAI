@@ -220,6 +220,54 @@ def _goto(view: str) -> None:
         st.session_state.current_view = view
 
 
+def _conversation_markdown(messages: list[dict]) -> str:
+    lines = ["# Conversa ROG AI", ""]
+    for item in messages:
+        if not isinstance(item, dict) or item.get("role") not in {"user", "assistant"}:
+            continue
+        label = "Você" if item["role"] == "user" else "ROG AI"
+        lines.extend((f"## {label}", "", str(item.get("content") or "").strip(), ""))
+    return "\n".join(lines).strip() + "\n"
+
+
+def _render_conversation_history(profile: str, agent_id: str, conversations: dict[str, list]) -> None:
+    persistence = _persistence()
+    current = conversations.get(agent_id, [])
+    with st.expander("Histórico de conversas", expanded=False):
+        search = st.text_input("Buscar", key=f"v8_history_search_{agent_id}", placeholder="Título da conversa")
+        archives = persistence.list_conversation_archives(profile=profile, agent_id=agent_id, search=search)
+        if not archives:
+            st.caption("Nenhuma conversa arquivada para este agente.")
+        for archive in archives[:12]:
+            title = str(archive.get("title") or "Conversa")
+            left, right = st.columns([5, 1])
+            with left:
+                if st.button(title, key=f"v8_restore_{archive['id']}", use_container_width=True, help="Restaurar esta conversa"):
+                    restored = persistence.load_conversation_archive(profile=profile, agent_id=agent_id, archive_id=archive["id"])
+                    if restored:
+                        if current:
+                            persistence.archive_conversation(profile=profile, agent_id=agent_id, messages=current)
+                        conversations[agent_id] = restored
+                        persist_conversations(profile, conversations)
+                        _goto("chat")
+                        st.rerun()
+            with right:
+                with st.popover("⋯"):
+                    st.caption("Excluir somente deste perfil e agente.")
+                    if st.button("Excluir", key=f"v8_delete_archive_{archive['id']}", type="primary", use_container_width=True):
+                        if persistence.delete_conversation_archive(profile=profile, agent_id=agent_id, archive_id=archive["id"]):
+                            st.rerun()
+        if current:
+            st.download_button(
+                "Exportar conversa atual",
+                data=_conversation_markdown(current),
+                file_name=f"rog-ai-{profile.lower()}-{agent_id}.md",
+                mime="text/markdown",
+                key=f"v8_export_{agent_id}",
+                use_container_width=True,
+            )
+
+
 def render_sidebar(profile: str, agent_id: str, conversations: dict[str, list], manager) -> None:
     with st.sidebar:
         render_brand(); render_profile(profile)
@@ -232,7 +280,10 @@ def render_sidebar(profile: str, agent_id: str, conversations: dict[str, list], 
             if st.button(label, key=f"v8_view_{view}", type="primary" if st.session_state.current_view == view else "secondary", use_container_width=True):
                 _goto(view); st.rerun()
         if st.button("＋  Nova conversa", key="v8_new_chat", use_container_width=True):
+            if conversations.get(agent_id):
+                _persistence().archive_conversation(profile=profile, agent_id=agent_id, messages=conversations[agent_id])
             conversations[agent_id] = []; persist_conversations(profile, conversations); _goto("chat"); st.rerun()
+        _render_conversation_history(profile, agent_id, conversations)
         if agent_id == "finance" and profile.lower() in {"allan", "beatriz"}:
             st.toggle("Financeiro compartilhado", key="shared_finance_upload", help="Quando ativo, documentos e comandos explícitos de memória usam apenas o espaço financeiro compartilhado Allan ↔ Beatriz.")
         else:
