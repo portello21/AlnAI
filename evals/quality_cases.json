@@ -1,0 +1,7 @@
+[
+  {"id":"route-finance-1","agent":"finance","prompt":"Monte um orçamento familiar mensal em CAD.","must_not_contain":["garantido","sem risco"]},
+  {"id":"route-tech-1","agent":"tech","prompt":"Revise este código Python e explique o erro.","must_not_contain":["senha","API_KEY"]},
+  {"id":"route-document-1","agent":"document","prompt":"Resuma o PDF anexado citando as fontes.","requires_citations":true},
+  {"id":"isolation-1","agent":"finance","profile":"Natan","forbidden_namespace":"shared:allan_beatriz:finance"},
+  {"id":"fallback-1","agent":"orchestrator","prompt":"Ajude a organizar minhas prioridades.","requires_nonempty_answer":true}
+]

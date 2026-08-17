@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 from typing import Any, Optional, Sequence
 
@@ -10,6 +11,7 @@ COLLECTION_NAME = "rog_documents_v9"
 EMBEDDING_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 DEFAULT_CHUNK_SIZE = 1000
 DEFAULT_CHUNK_OVERLAP = 150
+DEFAULT_MIN_SCORE = 0.18
 
 _client = None
 _collection = None
@@ -116,6 +118,30 @@ def _embed_query(text: str) -> list[float]:
     return _get_embedding_model().encode([text], normalize_embeddings=True, show_progress_bar=False)[0].tolist()
 
 
+def _terms(text: str) -> set[str]:
+    return {term for term in re.findall(r"[\wÀ-ÿ]+", str(text or "").casefold()) if len(term) >= 3}
+
+
+def lexical_score(query: str, document: str) -> float:
+    """Small deterministic keyword signal used alongside vector similarity."""
+    query_terms = _terms(query)
+    if not query_terms:
+        return 0.0
+    document_terms = _terms(document)
+    return len(query_terms & document_terms) / len(query_terms)
+
+
+def citation_label(metadata: dict) -> str:
+    filename = str((metadata or {}).get("filename") or "documento").strip()
+    chunk_index = int((metadata or {}).get("chunk_index", 0) or 0) + 1
+    return f"{filename} · trecho {chunk_index}"
+
+
+def format_rag_result(item: dict[str, Any]) -> str:
+    label = citation_label(item.get("metadata") or {})
+    return f"[Fonte: {label}]\n{str(item.get('text') or '').strip()}"
+
+
 def delete_document(file_hash: str, namespace: str) -> bool:
     file_hash = str(file_hash or "").strip()
     namespace = _normalize_namespace(namespace)
@@ -164,7 +190,7 @@ def add_document(file_hash: str, text: str, metadata: dict) -> dict:
     return {"success": True, "file_hash": file_hash, "chunks": len(chunks), "namespace": namespace, "filename": clean_meta["filename"]}
 
 
-def query_documents(query: str, *, profile: str, agent_id: str, namespaces: Sequence[str], n_results: int = 3) -> list[dict[str, Any]]:
+def query_documents(query: str, *, profile: str, agent_id: str, namespaces: Sequence[str], n_results: int = 3, min_score: float = DEFAULT_MIN_SCORE) -> list[dict[str, Any]]:
     query = str(query or "").strip()
     profile_norm = _normalize_profile(profile)
     agent_norm = str(agent_id or "").strip().lower()
@@ -181,7 +207,7 @@ def query_documents(query: str, *, profile: str, agent_id: str, namespaces: Sequ
     try:
         result = collection.query(
             query_embeddings=[_embed_query(query)],
-            n_results=min(max(1, int(n_results)), count),
+            n_results=min(max(1, int(n_results) * 4), count),
             where=where,
             include=["documents", "metadatas", "distances"],
         )
@@ -199,20 +225,31 @@ def query_documents(query: str, *, profile: str, agent_id: str, namespaces: Sequ
         if _normalize_namespace((metadata or {}).get("namespace")) not in allowed_set:
             continue
         distance = distances[i] if i < len(distances) else None
+        semantic_score = 1.0 - float(distance) if isinstance(distance, (int, float)) else 0.0
+        keyword_score = lexical_score(query, str(document or ""))
+        # Weighted hybrid score: semantic retrieval remains primary while exact
+        # names, numbers and domain terms can promote an otherwise close chunk.
+        hybrid_score = max(0.0, min(1.0, semantic_score * 0.72 + keyword_score * 0.28))
+        if hybrid_score < max(0.0, min(float(min_score), 1.0)):
+            continue
         output.append({
             "id": ids[i] if i < len(ids) else None,
             "text": str(document or ""),
             "metadata": metadata or {},
             "distance": distance,
-            "score": 1.0 - float(distance) if isinstance(distance, (int, float)) else None,
+            "semantic_score": semantic_score,
+            "lexical_score": keyword_score,
+            "score": hybrid_score,
+            "citation": citation_label(metadata or {}),
         })
-    return output
+    output.sort(key=lambda item: float(item.get("score") or 0.0), reverse=True)
+    return output[: max(1, int(n_results))]
 
 
 def query_rag(query: str, n_results: int = 3, profile: str | None = None, agent_id: str | None = None, namespaces: Sequence[str] | None = None) -> list[str]:
     if not profile or not agent_id:
         return []
-    return [item["text"] for item in query_documents(query, profile=profile, agent_id=agent_id, namespaces=namespaces or (), n_results=n_results) if item.get("text")]
+    return [format_rag_result(item) for item in query_documents(query, profile=profile, agent_id=agent_id, namespaces=namespaces or (), n_results=n_results) if item.get("text")]
 
 
 def rag_stats() -> dict:
