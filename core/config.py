@@ -36,6 +36,7 @@ class Config:
     OPENAI_API = _setting("OPENAI_API_KEY")
     ANTHROPIC_API = _setting("ANTHROPIC_API_KEY")
     SUPABASE_URL = _setting("SUPABASE_URL")
+    SUPABASE_PUBLISHABLE_KEY = _setting("SUPABASE_PUBLISHABLE_KEY", _setting("SUPABASE_ANON_KEY"))
     SUPABASE_SERVICE_ROLE_KEY = _setting("SUPABASE_SERVICE_ROLE_KEY", _setting("SUPABASE_KEY"))
     # Backwards-compatible alias. Server code must still validate that this is
     # privileged before performing writes.
@@ -65,6 +66,24 @@ class Config:
         else bool(os.getenv("STREAMLIT_SHARING_MODE") or str(Path.cwd()).startswith("/mount/src/"))
     )
     SUPABASE_SYNC_MODE = _setting("SUPABASE_SYNC_MODE", "background").casefold()
+    SUPABASE_AUTH_ENABLED = _bool_setting("SUPABASE_AUTH_ENABLED", False)
+    LEGACY_AUTH_FALLBACK = _bool_setting("ROG_LEGACY_AUTH_FALLBACK", True)
+    API_ENABLED = _bool_setting("ROG_API_ENABLED", True)
+    API_RATE_LIMIT_PER_MINUTE = int(_float_setting("ROG_API_RATE_LIMIT_PER_MINUTE", 12))
+    API_MAX_HISTORY_MESSAGES = int(_float_setting("ROG_API_MAX_HISTORY_MESSAGES", 40))
+    PAID_PROVIDER_DAILY_REQUEST_LIMIT = int(_float_setting("ROG_PAID_PROVIDER_DAILY_REQUEST_LIMIT", 50))
+    ADMIN_REQUIRE_MFA = _bool_setting("ROG_ADMIN_REQUIRE_MFA", True)
+    SENTRY_DSN = _setting("SENTRY_DSN")
+    POSTHOG_API_KEY = _setting("POSTHOG_API_KEY")
+    POSTHOG_HOST = _setting("POSTHOG_HOST", "https://us.i.posthog.com")
+    OBSERVABILITY_HASH_SECRET = _setting("OBSERVABILITY_HASH_SECRET", _setting("DEVICE_COOKIE_SECRET"))
+    AUDIT_RETENTION_DAYS = int(_float_setting("ROG_AUDIT_RETENTION_DAYS", 90))
+    USAGE_RETENTION_DAYS = int(_float_setting("ROG_USAGE_RETENTION_DAYS", 180))
+
+    @classmethod
+    def profile_auth_email(cls, profile: str) -> str:
+        name = str(profile or "").strip().upper()
+        return _setting(f"{name}_AUTH_EMAIL") if name else ""
 
     @classmethod
     def status(cls) -> dict[str, bool]:
@@ -74,6 +93,7 @@ class Config:
             "openai": bool(cls.OPENAI_API and cls.ALLOW_PAID_PROVIDERS),
             "anthropic": bool(cls.ANTHROPIC_API and cls.ALLOW_PAID_PROVIDERS),
             "supabase": bool(cls.SUPABASE_URL and cls.SUPABASE_KEY),
+            "supabase_auth": bool(cls.SUPABASE_AUTH_ENABLED and cls.SUPABASE_URL and cls.SUPABASE_PUBLISHABLE_KEY),
             "telegram": bool(cls.TELEGRAM_TOKEN),
         }
 

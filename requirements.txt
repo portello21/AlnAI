@@ -1,4 +1,7 @@
 streamlit==1.61.1
+fastapi>=0.116,<1
+uvicorn>=0.35,<1
+sentry-sdk>=2.22,<3
 requests>=2.32,<3
 supabase>=2.18,<3
 pytesseract>=0.3.13,<1
@@ -10,4 +13,6 @@ ddgs>=9,<10
 extra-streamlit-components>=0.1.80,<1
 pypdf>=5,<7
 python-docx>=1.2,<2
+openpyxl>=3.1,<4
+cryptography>=45,<47
 pytest>=8,<10

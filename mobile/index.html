@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#08090d">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="stylesheet" href="./styles.css">
+  <title>ROG AI</title>
+</head>
+<body>
+  <main>
+    <header><img src="./icon.svg" alt=""><div><strong>ROG AI</strong><small>Family Intelligence</small></div><button id="logout" hidden>Sair</button></header>
+    <section id="login" class="panel">
+      <h1>Entrar</h1>
+      <label>Perfil<select id="profile"><option>Allan</option><option>Beatriz</option><option>Natan</option><option>Tainan</option></select></label>
+      <label>Senha<input id="password" type="password" autocomplete="current-password"></label>
+      <button id="loginButton" class="primary">Entrar com Supabase</button><p id="loginError" role="alert"></p>
+    </section>
+    <section id="chat" hidden>
+      <label class="agent-label">Agente<select id="agent"></select></label>
+      <div id="messages" aria-live="polite"></div>
+      <form id="composer"><textarea id="message" maxlength="12000" placeholder="Mensagem para o ROG AI…" required></textarea><button id="send" class="primary">Enviar</button><button id="cancel" type="button" hidden>Cancelar</button></form>
+    </section>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

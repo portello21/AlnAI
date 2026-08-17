@@ -70,6 +70,22 @@ def extract_docx_text(file_bytes: bytes) -> str:
     return _cap("\n".join(parts))
 
 
+def extract_xlsx_text(file_bytes: bytes) -> str:
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(io.BytesIO(file_bytes), read_only=True, data_only=True)
+    parts = []
+    for sheet in workbook.worksheets[:50]:
+        parts.append(f"PLANILHA: {sheet.title}")
+        for row in sheet.iter_rows(max_row=10_000, values_only=True):
+            values = ["" if value is None else str(value) for value in row]
+            if any(value.strip() for value in values):
+                parts.append(" | ".join(values))
+            if sum(len(item) for item in parts) >= MAX_EXTRACTED_CHARS:
+                return _cap("\n".join(parts))
+    return _cap("\n".join(parts))
+
+
 def extract_document_text(file_bytes: bytes, filename: str, mime_type: Optional[str] = None) -> dict:
     filename = Path(filename or "arquivo").name
     extension = Path(filename).suffix.lower()
@@ -100,6 +116,8 @@ def extract_document_text(file_bytes: bytes, filename: str, mime_type: Optional[
             result["text"], result["method"] = extract_pdf_text(file_bytes), "pypdf"
         elif extension == ".docx" or "wordprocessingml" in mime_type:
             result["text"], result["method"] = extract_docx_text(file_bytes), "python-docx"
+        elif extension == ".xlsx" or "spreadsheetml" in mime_type:
+            result["text"], result["method"] = extract_xlsx_text(file_bytes), "openpyxl"
         else:
             result["error"] = f"Formato não suportado: {extension or mime_type or 'desconhecido'}"
             return result

@@ -110,6 +110,7 @@ ROUTE_TERMS: dict[str, tuple[str, ...]] = {
     "document": (
         "pdf", "documento", "arquivo", "anexo", "resuma", "resumir", "extraia", "extrair", "ocr", "planilha",
         "csv", "docx",
+        "xlsx", "excel",
     ),
     "personal": (
         "agenda", "rotina", "lembrete", "organizar meu dia", "organize meu dia", "tarefas", "compromisso",
@@ -148,7 +149,7 @@ def route_query(user_query: str) -> str:
         # Match complete words/phrases. Substring routing made "canada" match
         # the technical term "api" and sent general questions to Tech Agent.
         score = sum(
-            1
+            max(1, len(term.split()))
             for term in terms
             if re.search(rf"(?<!\w){re.escape(term.casefold())}(?!\w)", text)
         )
@@ -343,5 +344,8 @@ def execute_agent(
         "provider": llm_result.get("provider", "unknown"),
         "fallback": llm_result.get("fallback", False),
         "success": llm_result.get("success", True),
+        "duration_ms": llm_result.get("duration_ms"),
+        "error_type": llm_result.get("error_type", ""),
+        "attempted_providers": llm_result.get("attempted_providers", ()),
         "answer": llm_result.get("content", ""),
     }

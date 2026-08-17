@@ -25,7 +25,11 @@ statement*.txt
 
 # Backups
 *backup*
+!core/encrypted_backup.py
+!tests/test_encrypted_backup_v11.py
+!scripts/backup_supabase_data.py
 *.bak
+*.rogbackup
 
 # Archives
 *.zip

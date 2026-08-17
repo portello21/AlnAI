@@ -47,3 +47,24 @@ def create_privileged_client(url: str, key: str, *, timeout_seconds: float = 3.0
     if not is_privileged_server_key(key):
         return None
     return create_optional_client(url, key, timeout_seconds=timeout_seconds)
+
+
+def is_publishable_key(key: str) -> bool:
+    value = str(key or "").strip()
+    if value.startswith("sb_publishable_"):
+        return True
+    if value.count(".") == 2:
+        try:
+            payload_segment = value.split(".")[1]
+            payload_segment += "=" * (-len(payload_segment) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_segment).decode("utf-8"))
+            return payload.get("role") == "anon"
+        except Exception:
+            return False
+    return False
+
+
+def create_public_client(url: str, key: str, *, timeout_seconds: float = 3.0):
+    if not is_publishable_key(key):
+        return None
+    return create_optional_client(url, key, timeout_seconds=timeout_seconds)
