@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import base64
+from datetime import datetime, timezone
 import json
 import secrets
 from urllib.parse import urljoin
@@ -110,6 +111,7 @@ def generate_temporary_password(admin: AuthIdentity, target_profile: str) -> str
     temporary = secrets.token_urlsafe(15)
     metadata = dict(user.get("app_metadata") or {})
     metadata["rog_password_change_required"] = True
+    metadata["rog_password_change_issued_at"] = datetime.now(timezone.utc).isoformat()
     try:
         response = httpx.put(
             urljoin(Config.SUPABASE_URL.rstrip("/") + "/", f"auth/v1/admin/users/{user['id']}"),
@@ -129,23 +131,30 @@ def complete_required_password_change(identity: AuthIdentity, new_password: str)
     verified = validate_access_token(identity.access_token)
     if verified is None or verified.user_id != identity.user_id or verified.profile != identity.profile:
         return False
-    match = _admin_user_for_profile(identity.profile)
-    if match is None or str(match[0].get("id")) != identity.user_id:
-        return False
-    user, headers = match
-    metadata = dict(user.get("app_metadata") or {})
-    metadata["rog_password_change_required"] = False
     try:
-        response = httpx.put(
-            urljoin(Config.SUPABASE_URL.rstrip("/") + "/", f"auth/v1/admin/users/{identity.user_id}"),
-            headers={**headers, "Content-Type": "application/json"},
-            json={"password": str(new_password), "app_metadata": metadata},
-            timeout=5.0,
-        )
-        response.raise_for_status()
-        return True
+        client = create_public_client(Config.SUPABASE_URL, Config.SUPABASE_PUBLISHABLE_KEY)
+        if client is None or not identity.refresh_token:
+            return False
+        client.auth.set_session(identity.access_token, identity.refresh_token)
+        response = client.auth.update_user({"password": str(new_password)})
+        return getattr(response, "user", None) is not None
     except Exception:
         return False
+
+
+def _requires_password_change(user, metadata: dict) -> bool:
+    if not bool(metadata.get("rog_password_change_required")):
+        return False
+    issued_raw = str(metadata.get("rog_password_change_issued_at") or "").strip()
+    updated_raw = getattr(user, "updated_at", None)
+    if not issued_raw or not updated_raw:
+        return True
+    try:
+        issued = datetime.fromisoformat(issued_raw.replace("Z", "+00:00"))
+        updated = updated_raw if isinstance(updated_raw, datetime) else datetime.fromisoformat(str(updated_raw).replace("Z", "+00:00"))
+        return updated <= issued
+    except Exception:
+        return True
 
 
 def _confirm_active(identity: AuthIdentity | None) -> AuthIdentity | None:
@@ -216,7 +225,7 @@ def _identity_from_user(user, *, access_token: str, refresh_token: str = "", exp
         expires_at=int(expires_at or 0),
         aal=aal,
         is_admin=role == "admin",
-        password_change_required=bool(metadata.get("rog_password_change_required")),
+        password_change_required=_requires_password_change(user, metadata),
     )
 
 
