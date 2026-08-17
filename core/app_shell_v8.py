@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import importlib.util
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 import streamlit as st
@@ -24,6 +25,7 @@ from core.auth_v8 import (
 from core.database import PersistenceManager
 from core.memory_service_v8 import FamilyMemoryService
 from core.profile_access import allowed_namespaces, write_namespace
+from core.response_jobs import cancel_response_job, consume_response_job, drain_response_tokens, response_job_status, start_response_job
 from core.ui_v8 import AGENT_META, inject_design_system, render_agent_header, render_brand, render_profile, render_welcome
 from core.workspace_v8 import render_documents_view, render_memory_view, render_system_view
 
@@ -90,13 +92,18 @@ def init_state() -> None:
     st.session_state.setdefault("current_view", "chat")
     st.session_state.setdefault("conversations_by_profile", {})
     st.session_state.setdefault("busy", False)
+    st.session_state.setdefault("active_response_job", None)
+    st.session_state.setdefault("streamed_response", "")
     st.session_state.setdefault("auth_restore_attempts", 0)
     st.session_state.setdefault("shared_finance_upload", False)
 
 
 def clear_private_state(*, preserve_restore_attempts: bool = True) -> None:
     attempts = int(st.session_state.get("auth_restore_attempts", 0)) if preserve_restore_attempts else 0
-    for key in ("authenticated", "current_profile", "current_agent", "current_view", "conversations", "conversations_by_profile", "memory_by_profile", "long_memory", "busy", "processed_events", "shared_finance_upload"):
+    active_job = st.session_state.get("active_response_job")
+    if isinstance(active_job, dict):
+        cancel_response_job(job_id=active_job.get("id", ""), profile=active_job.get("profile", ""), agent_id=active_job.get("agent_id", ""))
+    for key in ("authenticated", "current_profile", "current_agent", "current_view", "conversations", "conversations_by_profile", "memory_by_profile", "long_memory", "busy", "active_response_job", "streamed_response", "processed_events", "shared_finance_upload"):
         st.session_state.pop(key, None)
     st.session_state.authenticated = False
     st.session_state.current_profile = None
@@ -219,19 +226,70 @@ def _goto(view: str) -> None:
         st.session_state.current_view = view
 
 
+def _conversation_markdown(messages: list[dict]) -> str:
+    lines = ["# Conversa ROG AI", ""]
+    for item in messages:
+        if not isinstance(item, dict) or item.get("role") not in {"user", "assistant"}:
+            continue
+        label = "Você" if item["role"] == "user" else "ROG AI"
+        lines.extend((f"## {label}", "", str(item.get("content") or "").strip(), ""))
+    return "\n".join(lines).strip() + "\n"
+
+
+def _render_conversation_history(profile: str, agent_id: str, conversations: dict[str, list]) -> None:
+    persistence = _persistence()
+    current = conversations.get(agent_id, [])
+    with st.expander("Histórico de conversas", expanded=False):
+        search = st.text_input("Buscar", key=f"v8_history_search_{agent_id}", placeholder="Título da conversa")
+        archives = persistence.list_conversation_archives(profile=profile, agent_id=agent_id, search=search)
+        if not archives:
+            st.caption("Nenhuma conversa arquivada para este agente.")
+        for archive in archives[:12]:
+            title = str(archive.get("title") or "Conversa")
+            left, right = st.columns([5, 1])
+            with left:
+                if st.button(title, key=f"v8_restore_{archive['id']}", use_container_width=True, help="Restaurar esta conversa"):
+                    restored = persistence.load_conversation_archive(profile=profile, agent_id=agent_id, archive_id=archive["id"])
+                    if restored:
+                        if current:
+                            persistence.archive_conversation(profile=profile, agent_id=agent_id, messages=current)
+                        conversations[agent_id] = restored
+                        persist_conversations(profile, conversations)
+                        _goto("chat")
+                        st.rerun()
+            with right:
+                with st.popover("⋯"):
+                    st.caption("Excluir somente deste perfil e agente.")
+                    if st.button("Excluir", key=f"v8_delete_archive_{archive['id']}", type="primary", use_container_width=True):
+                        if persistence.delete_conversation_archive(profile=profile, agent_id=agent_id, archive_id=archive["id"]):
+                            st.rerun()
+        if current:
+            st.download_button(
+                "Exportar conversa atual",
+                data=_conversation_markdown(current),
+                file_name=f"rog-ai-{profile.lower()}-{agent_id}.md",
+                mime="text/markdown",
+                key=f"v8_export_{agent_id}",
+                use_container_width=True,
+            )
+
+
 def render_sidebar(profile: str, agent_id: str, conversations: dict[str, list], manager) -> None:
     with st.sidebar:
         render_brand(); render_profile(profile)
         st.markdown('<div class="rog-section">Assistentes</div>', unsafe_allow_html=True)
         for aid, meta in AGENT_META.items():
-            if st.button(f"{meta[0]}  {meta[1]}", key=f"v8_nav_{aid}", type="primary" if aid == agent_id and st.session_state.current_view == "chat" else "secondary", use_container_width=True):
+            if st.button(f"{meta[0]}  {meta[1]}", key=f"v8_nav_{aid}", type="primary" if aid == agent_id and st.session_state.current_view == "chat" else "secondary", use_container_width=True, disabled=bool(st.session_state.busy)):
                 st.session_state.current_agent = aid; _goto("chat"); st.rerun()
         st.markdown('<div class="rog-section">Workspace</div>', unsafe_allow_html=True)
         for view, label in (("chat", "💬  Conversa"), ("memories", "🧠  Memórias"), ("documents", "📎  Documentos"), ("system", "⚙  Sistema")):
             if st.button(label, key=f"v8_view_{view}", type="primary" if st.session_state.current_view == view else "secondary", use_container_width=True):
                 _goto(view); st.rerun()
         if st.button("＋  Nova conversa", key="v8_new_chat", use_container_width=True):
+            if conversations.get(agent_id):
+                _persistence().archive_conversation(profile=profile, agent_id=agent_id, messages=conversations[agent_id])
             conversations[agent_id] = []; persist_conversations(profile, conversations); _goto("chat"); st.rerun()
+        _render_conversation_history(profile, agent_id, conversations)
         if agent_id == "finance" and profile.lower() in {"allan", "beatriz"}:
             st.toggle("Financeiro compartilhado", key="shared_finance_upload", help="Quando ativo, documentos e comandos explícitos de memória usam apenas o espaço financeiro compartilhado Allan ↔ Beatriz.")
         else:
@@ -308,13 +366,56 @@ def process_submission(profile: str, agent_id: str, conversations: dict[str, lis
     if shared_memory_context: extra_context_parts.append(shared_memory_context)
     user_display = "\n\n".join(display_parts) or query; history.append({"role":"user","content":user_display}); st.session_state.busy = True
     try:
-        result = execute_agent(agent_id=agent_id, history=history[:-1], user_query=query, extra_context="\n\n".join(extra_context_parts) or None, profile=profile)
-        answer = str(result.get("answer") or "").strip() or "Não recebi uma resposta válida do modelo. Tente novamente."
-        history.append({"role":"assistant","content":answer,"runtime":result})
+        job_id = start_response_job(
+            profile=profile,
+            agent_id=agent_id,
+            target=execute_agent,
+            kwargs={"agent_id": agent_id, "history": history[:-1], "user_query": query, "extra_context": "\n\n".join(extra_context_parts) or None, "profile": profile},
+            streaming=True,
+        )
+        st.session_state.active_response_job = {"id": job_id, "profile": profile, "agent_id": agent_id}
+        st.session_state.streamed_response = ""
     except Exception as exc:
-        LOGGER.exception("agent pipeline failed: %s", type(exc).__name__); history.append({"role":"assistant","content":"O serviço de IA encontrou uma falha temporária. Sua mensagem foi preservada; tente novamente em instantes.","runtime":{"agent_name":"ROG AI","model":"fallback","success":False}})
-    finally:
-        st.session_state.busy = False; persist_conversations(profile, conversations)
+        LOGGER.exception("agent job start failed: %s", type(exc).__name__)
+        history.append({"role":"assistant","content":"O serviço de IA encontrou uma falha temporária. Sua mensagem foi preservada; tente novamente em instantes.","runtime":{"agent_name":"ROG AI","model":"fallback","success":False}})
+        st.session_state.busy = False
+    persist_conversations(profile, conversations)
+    st.rerun()
+
+
+@st.fragment(run_every=0.5)
+def _render_active_response(profile: str, agent_id: str, conversations: dict[str, list]) -> None:
+    active = st.session_state.get("active_response_job")
+    if not isinstance(active, dict) or active.get("profile") != profile or active.get("agent_id") != agent_id:
+        return
+    status = response_job_status(job_id=active.get("id", ""), profile=profile, agent_id=agent_id)
+    token_batch = drain_response_tokens(job_id=active.get("id", ""), profile=profile, agent_id=agent_id)
+    if token_batch:
+        st.session_state.streamed_response = str(st.session_state.get("streamed_response", "")) + token_batch
+    if st.session_state.get("streamed_response"):
+        with st.chat_message("assistant"):
+            st.markdown(st.session_state.streamed_response + ("▌" if status["state"] == "running" else ""))
+    if status["state"] == "running":
+        st.caption("ROG AI está preparando a resposta…")
+        if st.button("Cancelar geração", key=f"v8_cancel_{active.get('id')}", use_container_width=True):
+            cancel_response_job(job_id=active.get("id", ""), profile=profile, agent_id=agent_id)
+            consume_response_job(job_id=active.get("id", ""), profile=profile, agent_id=agent_id)
+            st.session_state.active_response_job = None
+            st.session_state.streamed_response = ""
+            st.session_state.busy = False
+            st.rerun()
+        return
+    final = consume_response_job(job_id=active.get("id", ""), profile=profile, agent_id=agent_id)
+    if final["state"] == "done" and isinstance(final.get("result"), dict):
+        result = final["result"]
+        answer = str(result.get("answer") or "").strip() or "Não recebi uma resposta válida do modelo. Tente novamente."
+        conversations[agent_id].append({"role": "assistant", "content": answer, "runtime": result})
+    elif final["state"] != "cancelled":
+        conversations[agent_id].append({"role":"assistant","content":"O serviço de IA encontrou uma falha temporária. Sua mensagem foi preservada; tente novamente em instantes.","runtime":{"agent_name":"ROG AI","model":"fallback","success":False}})
+    st.session_state.active_response_job = None
+    st.session_state.streamed_response = ""
+    st.session_state.busy = False
+    persist_conversations(profile, conversations)
     st.rerun()
 
 
@@ -328,13 +429,34 @@ def _render_chat(profile: str, agent_id: str, conversations: dict[str, list]) ->
             with column:
                 if st.button(prompt, key=f"v8_quick_{agent_id}_{prompt}", use_container_width=True, disabled=bool(st.session_state.busy)):
                     process_submission(profile, agent_id, conversations, prompt)
-    for message in history:
+    for message_index, message in enumerate(history):
         role = message.get("role")
         with st.chat_message("user" if role == "user" else "assistant"):
+            runtime = {}
             if role == "assistant":
                 runtime = message.get("runtime") or {}; label = runtime.get("agent_name", "ROG AI"); model = runtime.get("model", ""); provider = runtime.get("provider", ""); meta = " · ".join(str(x) for x in (label, model, provider) if x)
                 if meta: st.caption(meta)
-            st.markdown(message.get("content", ""))
+            content = str(message.get("content", ""))
+            st.markdown(content)
+            if role == "assistant" and content:
+                message_hash = hashlib.sha256(content.encode("utf-8")).hexdigest()
+                feedback_key = f"feedback_{profile}_{agent_id}_{message_hash[:16]}"
+                if st.session_state.get(feedback_key):
+                    st.caption("Obrigado pelo feedback.")
+                else:
+                    positive, negative, spacer = st.columns([1, 1, 8])
+                    with positive:
+                        if st.button("👍", key=f"positive_{message_index}_{message_hash[:12]}", help="Resposta útil"):
+                            if _persistence().save_feedback(profile=profile, agent_id=agent_id, message_hash=message_hash, rating=1, provider=runtime.get("provider", ""), model=runtime.get("model", "")):
+                                st.session_state[feedback_key] = True; st.rerun()
+                    with negative:
+                        with st.popover("👎"):
+                            reason = st.selectbox("O que faltou?", ("Incorreta", "Incompleta", "Lenta", "Não usou o documento", "Agente errado"), key=f"reason_{message_index}_{message_hash[:12]}")
+                            if st.button("Enviar feedback", key=f"negative_{message_index}_{message_hash[:12]}", use_container_width=True):
+                                if _persistence().save_feedback(profile=profile, agent_id=agent_id, message_hash=message_hash, rating=-1, reason=reason, provider=runtime.get("provider", ""), model=runtime.get("model", "")):
+                                    st.session_state[feedback_key] = True; st.rerun()
+    if st.session_state.busy:
+        _render_active_response(profile, agent_id, conversations)
     audio_ready = importlib.util.find_spec("whisper") is not None
     submission = st.chat_input("Mensagem para o ROG AI…", key="v8_chat_input", disabled=bool(st.session_state.busy), accept_file="multiple", file_type=["txt","md","csv","json","pdf","docx","png","jpg","jpeg","webp"], max_upload_size=20, accept_audio=audio_ready)
     if submission is not None: process_submission(profile, agent_id, conversations, submission)
@@ -352,5 +474,5 @@ def run() -> None:
     shared_scope = bool(st.session_state.shared_finance_upload) and agent_id == "finance" and profile.lower() in {"allan", "beatriz"}
     if view == "memories": render_memory_view(profile, agent_id, _family_memory(), shared_finance=shared_scope); return
     if view == "documents": render_documents_view(profile, agent_id, _process_files, shared_finance=shared_scope); return
-    if view == "system": render_system_view(cookie_ready=bool(_cookie_secret() and manager)); return
+    if view == "system": render_system_view(cookie_ready=bool(_cookie_secret() and manager), profile=profile, feedback=_persistence().feedback_summary(profile)); return
     _render_chat(profile, agent_id, conversations)

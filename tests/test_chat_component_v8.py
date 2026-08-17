@@ -20,7 +20,7 @@ def test_chat_has_attachment_limits():
 
 def test_python_uses_agent_runtime():
     assert "from core.agent_runtime import AGENTS as RUNTIME_AGENTS, execute_agent" in SHELL
-    assert "execute_agent(" in SHELL
+    assert "target=execute_agent" in SHELL
 
 
 def test_invalid_components_v2_generic_callback_is_absent():
@@ -30,3 +30,8 @@ def test_invalid_components_v2_generic_callback_is_absent():
 def test_quick_actions_use_the_real_submission_pipeline():
     assert "QUICK_ACTIONS" in SHELL
     assert "process_submission(profile, agent_id, conversations, prompt)" in SHELL
+
+
+def test_feedback_is_scoped_and_content_is_hashed():
+    assert "hashlib.sha256(content.encode" in SHELL
+    assert "save_feedback(profile=profile, agent_id=agent_id" in SHELL

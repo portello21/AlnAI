@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import streamlit as st
 
 from core.config import Config
@@ -19,6 +21,25 @@ def render_memory_view(profile: str, agent_id: str, memory_service, *, shared_fi
     if not memories:
         st.info("Nenhuma memória ativa neste espaço.")
         return
+
+    export_rows = [
+        {
+            "type": item.get("memory_type", "fact"),
+            "content": item.get("content", ""),
+            "importance": item.get("importance", 0.5),
+            "created_at": item.get("created_at"),
+            "updated_at": item.get("updated_at"),
+        }
+        for item in memories
+    ]
+    st.download_button(
+        "Exportar minhas memórias",
+        data=json.dumps(export_rows, ensure_ascii=False, indent=2),
+        file_name=f"rog-ai-memorias-{profile.casefold()}.json",
+        mime="application/json",
+        use_container_width=True,
+        help="Exporta somente o espaço de memória atualmente visível.",
+    )
 
     for memory in memories:
         memory_id = str(memory.get("id", ""))
@@ -44,6 +65,9 @@ def render_memory_view(profile: str, agent_id: str, memory_service, *, shared_fi
 
 
 def render_documents_view(profile: str, agent_id: str, process_files, *, shared_finance: bool) -> None:
+    from core.profile_access import write_namespace
+    from core.vector_rag_v9 import delete_document, list_documents
+
     st.subheader("Documentos")
     if shared_finance:
         st.caption("Novos documentos serão indexados no espaço financeiro compartilhado Allan ↔ Beatriz.")
@@ -65,13 +89,35 @@ def render_documents_view(profile: str, agent_id: str, process_files, *, shared_
         else:
             st.warning("Nenhum documento foi indexado.")
 
+    namespace = write_namespace(profile, agent_id, shared_finance=shared_finance)
+    documents = list_documents(profile=profile, agent_id=agent_id, namespaces=(namespace,))
+    st.markdown("#### Documentos indexados")
+    if not documents:
+        st.caption("Nenhum documento persistido neste espaço.")
+        return
+    for document in documents:
+        with st.container(border=True):
+            left, right = st.columns([8, 2])
+            with left:
+                st.markdown(f"**{document['filename']}**")
+                st.caption(f"{document['mime_type']} · {document['chunks']} trecho(s)")
+            with right:
+                with st.popover("Excluir", use_container_width=True):
+                    st.caption("A exclusão remove todos os trechos deste documento.")
+                    if st.button("Confirmar exclusão", key=f"delete_doc_{document['namespace']}_{document['file_hash']}", type="primary", use_container_width=True):
+                        if delete_document(document["file_hash"], document["namespace"]):
+                            st.success("Documento excluído.")
+                            st.rerun()
+                        st.error("Não foi possível excluir o documento.")
 
-def render_system_view(*, cookie_ready: bool) -> None:
+
+def render_system_view(*, cookie_ready: bool, profile: str, feedback: dict) -> None:
     st.subheader("Sistema")
     st.caption("Diagnóstico seguro. Nenhuma chave ou credencial é exibida.")
 
     status = Config.status()
     rows = [
+        ("NVIDIA NIM", status.get("nvidia", False), "Provider hospedado preferencial"),
         ("DeepSeek", status.get("deepseek", False), "Provider em nuvem"),
         ("Supabase", status.get("supabase", False), "Persistência remota opcional"),
         ("Dispositivo confiável", cookie_ready, "Sessão persistente no navegador"),
@@ -94,3 +140,23 @@ def render_system_view(*, cookie_ready: bool) -> None:
                 st.markdown("🟢 OK" if ok else "⚪ Opcional/indisponível")
 
     st.info("Uma integração opcional indisponível não deve impedir a abertura da interface. O roteador tenta alternativas quando possível.")
+
+    if str(profile).casefold() == "allan":
+        from core.telemetry import runtime_snapshot
+
+        snapshot = runtime_snapshot()
+        st.markdown("#### Operação desta instância")
+        if snapshot["requests"]:
+            cols = st.columns(4)
+            cols[0].metric("Requisições", snapshot["requests"])
+            cols[1].metric("Sucessos", snapshot["successes"])
+            cols[2].metric("Fallbacks", snapshot["fallbacks"])
+            cols[3].metric("Tempo médio", f"{snapshot['average_duration_ms']} ms")
+            st.caption("Métricas mantidas apenas em memória nesta instância; prompts, respostas e identidades não são registrados.")
+        else:
+            st.caption("Ainda não há requisições registradas nesta instância.")
+        st.markdown("#### Feedback deste perfil")
+        fcols = st.columns(3)
+        fcols[0].metric("Total", int(feedback.get("total", 0)))
+        fcols[1].metric("Úteis", int(feedback.get("positive", 0)))
+        fcols[2].metric("A melhorar", int(feedback.get("negative", 0)))

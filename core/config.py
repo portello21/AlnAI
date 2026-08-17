@@ -36,7 +36,10 @@ class Config:
     OPENAI_API = _setting("OPENAI_API_KEY")
     ANTHROPIC_API = _setting("ANTHROPIC_API_KEY")
     SUPABASE_URL = _setting("SUPABASE_URL")
-    SUPABASE_KEY = _setting("SUPABASE_KEY")
+    SUPABASE_SERVICE_ROLE_KEY = _setting("SUPABASE_SERVICE_ROLE_KEY", _setting("SUPABASE_KEY"))
+    # Backwards-compatible alias. Server code must still validate that this is
+    # privileged before performing writes.
+    SUPABASE_KEY = SUPABASE_SERVICE_ROLE_KEY
     TELEGRAM_TOKEN = _setting("TELEGRAM_BOT_TOKEN")
 
     PROVIDER_MODE = _setting("ROG_PROVIDER_MODE", "auto").casefold()

@@ -249,6 +249,7 @@ def execute_agent(
     user_query: str,
     extra_context: Optional[str] = None,
     profile: Optional[str] = None,
+    on_token=None,
 ) -> dict:
     requested_agent = normalize_agent_id(agent_id)
     if requested_agent not in AGENTS:
@@ -301,6 +302,7 @@ def execute_agent(
         messages=messages,
         temperature=0.2,
         max_tokens=max_tokens,
+        on_token=on_token,
     )
 
     if llm_result.get("success", True):

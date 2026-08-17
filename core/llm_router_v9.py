@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import time
+
 from core.config import Config
 from core.provider_policy import ProviderHealthRegistry, provider_allowed
+from core.telemetry import record_runtime_event
 from providers.deepseek import chat_deepseek
 from providers.docker_model import chat_dmr, healthcheck_dmr
 from providers.nvidia import chat_nvidia
@@ -66,7 +69,7 @@ def _local(requested_model: str, messages: list, temperature: float, max_tokens,
     return _finish(chat_local(messages, temperature, max_tokens), provider, requested_model, "qwen3", fallback)
 
 
-def _nvidia(requested_model: str, messages: list, temperature: float, max_tokens, fallback: bool) -> dict | None:
+def _nvidia(requested_model: str, messages: list, temperature: float, max_tokens, fallback: bool, on_token=None) -> dict | None:
     provider = "nvidia"
     if not Config.status().get("nvidia") or not HEALTH.can_attempt(provider):
         return None
@@ -80,18 +83,19 @@ def _nvidia(requested_model: str, messages: list, temperature: float, max_tokens
         temperature,
         max_tokens or 4096,
         timeout=Config.NVIDIA_TIMEOUT_SECONDS,
+        on_token=on_token,
     )
     return _finish(value, provider, requested_model, Config.NVIDIA_MODEL, fallback)
 
 
-def _deepseek(requested_model: str, messages: list, temperature: float, max_tokens, fallback: bool) -> dict | None:
+def _deepseek(requested_model: str, messages: list, temperature: float, max_tokens, fallback: bool, on_token=None) -> dict | None:
     provider = "deepseek"
     if not Config.DEEPSEEK_API or not HEALTH.can_attempt(provider):
         return None
     if not provider_allowed(provider, allow_paid=Config.ALLOW_PAID_PROVIDERS):
         return None
     model = requested_model if str(requested_model).startswith("deepseek-") else "deepseek-chat"
-    value = chat_deepseek(api_key=Config.DEEPSEEK_API, messages=messages, model=model, temperature=temperature, max_tokens=max_tokens or 4096)
+    value = chat_deepseek(api_key=Config.DEEPSEEK_API, messages=messages, model=model, temperature=temperature, max_tokens=max_tokens or 4096, on_token=on_token)
     return _finish(value, provider, requested_model, model, fallback)
 
 
@@ -116,21 +120,31 @@ def attempt_order(requested_model: str) -> tuple[str, ...]:
     return ("nvidia", "local", "deepseek")
 
 
-def chat_with_metadata(model: str, messages: list, temperature: float = 0.2, max_tokens=None) -> dict:
+def chat_with_metadata(model: str, messages: list, temperature: float = 0.2, max_tokens=None, on_token=None) -> dict:
     requested_model = str(model or "auto")
     attempted: list[str] = []
     failures: list[dict[str, str]] = []
     for index, candidate in enumerate(attempt_order(requested_model)):
         fallback = index > 0
+        started = time.monotonic()
         if candidate == "local":
             result = _local(requested_model, messages, temperature, max_tokens, fallback)
         elif candidate == "nvidia":
-            result = _nvidia(requested_model, messages, temperature, max_tokens, fallback)
+            result = _nvidia(requested_model, messages, temperature, max_tokens, fallback, on_token)
         else:
-            result = _deepseek(requested_model, messages, temperature, max_tokens, fallback)
+            result = _deepseek(requested_model, messages, temperature, max_tokens, fallback, on_token)
         if result is None:
             continue
         attempted.append(candidate)
+        duration_ms = round((time.monotonic() - started) * 1000)
+        result["duration_ms"] = duration_ms
+        record_runtime_event(
+            provider=candidate,
+            success=bool(result["success"]),
+            duration_ms=duration_ms,
+            error_type=result.get("error_type") or "",
+            fallback=fallback,
+        )
         if result["success"]:
             result["attempted_providers"] = tuple(attempted)
             return result
