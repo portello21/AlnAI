@@ -3,7 +3,7 @@ import json
 from types import SimpleNamespace
 
 import core.supabase_auth as supabase_auth
-from core.supabase_auth import AuthIdentity, _confirm_active, _identity_from_user, migrate_legacy_password
+from core.supabase_auth import AuthIdentity, _confirm_active, _identity_from_user, generate_temporary_password, migrate_legacy_password
 from core.supabase_optional import is_publishable_key
 
 
@@ -30,6 +30,37 @@ def test_identity_rejects_unknown_profile_and_anonymous_users():
     anonymous = SimpleNamespace(id="user-2", is_anonymous=True, app_metadata={"rog_profile": "Allan"})
     assert _identity_from_user(unknown, access_token="token") is None
     assert _identity_from_user(anonymous, access_token="token") is None
+
+
+def test_temporary_password_requires_revalidated_admin(monkeypatch):
+    admin = AuthIdentity(user_id="admin-1", profile="Allan", access_token="token", is_admin=True)
+    monkeypatch.setattr(supabase_auth, "validate_access_token", lambda token: None)
+    monkeypatch.setattr(supabase_auth, "_admin_user_for_profile", lambda profile: (_ for _ in ()).throw(AssertionError("must not look up target")))
+    assert generate_temporary_password(admin, "Beatriz") == ""
+
+
+def test_temporary_password_marks_exact_user_for_first_access_change(monkeypatch):
+    admin = AuthIdentity(user_id="admin-1", profile="Allan", access_token="token", is_admin=True)
+    monkeypatch.setattr(supabase_auth, "validate_access_token", lambda token: admin)
+    monkeypatch.setattr(supabase_auth, "_admin_user_for_profile", lambda profile: (
+        {"id": "user-2", "app_metadata": {"rog_profile": "Beatriz", "rog_role": "member"}},
+        {"apikey": "secret"},
+    ))
+    monkeypatch.setattr(supabase_auth.secrets, "token_urlsafe", lambda size: "temporary-password")
+    captured = {}
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+    def fake_put(url, **kwargs):
+        captured.update(url=url, **kwargs)
+        return Response()
+
+    monkeypatch.setattr(supabase_auth.httpx, "put", fake_put)
+    assert generate_temporary_password(admin, "Beatriz") == "temporary-password"
+    assert captured["url"].endswith("/auth/v1/admin/users/user-2")
+    assert captured["json"]["app_metadata"]["rog_password_change_required"] is True
 
 
 def test_modern_secret_key_checks_profile_without_bearer_header(monkeypatch):
@@ -110,3 +141,4 @@ def test_legacy_password_migration_refuses_email_without_matching_profile(monkey
     monkeypatch.setattr(supabase_auth.httpx, "put", lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("must not update")))
 
     assert not migrate_legacy_password("Allan", "new-secret")
+
