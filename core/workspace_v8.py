@@ -44,6 +44,9 @@ def render_memory_view(profile: str, agent_id: str, memory_service, *, shared_fi
 
 
 def render_documents_view(profile: str, agent_id: str, process_files, *, shared_finance: bool) -> None:
+    from core.profile_access import write_namespace
+    from core.vector_rag_v9 import delete_document, list_documents
+
     st.subheader("Documentos")
     if shared_finance:
         st.caption("Novos documentos serão indexados no espaço financeiro compartilhado Allan ↔ Beatriz.")
@@ -64,6 +67,27 @@ def render_documents_view(profile: str, agent_id: str, process_files, *, shared_
                 st.write(note)
         else:
             st.warning("Nenhum documento foi indexado.")
+
+    namespace = write_namespace(profile, agent_id, shared_finance=shared_finance)
+    documents = list_documents(profile=profile, agent_id=agent_id, namespaces=(namespace,))
+    st.markdown("#### Documentos indexados")
+    if not documents:
+        st.caption("Nenhum documento persistido neste espaço.")
+        return
+    for document in documents:
+        with st.container(border=True):
+            left, right = st.columns([8, 2])
+            with left:
+                st.markdown(f"**{document['filename']}**")
+                st.caption(f"{document['mime_type']} · {document['chunks']} trecho(s)")
+            with right:
+                with st.popover("Excluir", use_container_width=True):
+                    st.caption("A exclusão remove todos os trechos deste documento.")
+                    if st.button("Confirmar exclusão", key=f"delete_doc_{document['namespace']}_{document['file_hash']}", type="primary", use_container_width=True):
+                        if delete_document(document["file_hash"], document["namespace"]):
+                            st.success("Documento excluído.")
+                            st.rerun()
+                        st.error("Não foi possível excluir o documento.")
 
 
 def render_system_view(*, cookie_ready: bool) -> None:
