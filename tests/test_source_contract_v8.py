@@ -35,5 +35,7 @@ def test_no_invalid_component_callback_regression():
 
 
 def test_app_is_only_a_bootstrap_shell():
-    assert "from core.app_shell_v8 import run" in APP
+    assert "import core.app_shell_v8 as app_shell" in APP
+    assert "app_shell.render_login = render_login_v9" in APP
+    assert "app_shell.run()" in APP
     assert len(APP.splitlines()) < 40

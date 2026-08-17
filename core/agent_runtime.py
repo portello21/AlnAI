@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Optional
 
 from core.context_security import guard_untrusted_context
@@ -143,7 +144,13 @@ def route_query(user_query: str) -> str:
 
     scores: dict[str, int] = {}
     for agent_id, terms in ROUTE_TERMS.items():
-        score = sum(1 for term in terms if term.casefold() in text)
+        # Match complete words/phrases. Substring routing made "canada" match
+        # the technical term "api" and sent general questions to Tech Agent.
+        score = sum(
+            1
+            for term in terms
+            if re.search(rf"(?<!\w){re.escape(term.casefold())}(?!\w)", text)
+        )
         if score:
             scores[agent_id] = score
 

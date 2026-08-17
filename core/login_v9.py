@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from datetime import datetime, timedelta, timezone
+from textwrap import dedent
 
 import streamlit as st
 
@@ -71,15 +72,19 @@ def _persist_trusted_device(manager, profile: str) -> bool:
 
 def render_login_v9(manager) -> None:
     st.markdown(
-        '''<style>
-        [data-testid="stSidebar"]{display:none!important}
-        .block-container{max-width:440px!important;padding-top:10vh!important}
-        .v9-login{text-align:center;margin-bottom:24px}
-        .v9-login-logo{width:58px;height:58px;border-radius:18px;display:grid;place-items:center;margin:0 auto 16px;background:linear-gradient(135deg,#684bf0,#9b82ff);font-size:22px;font-weight:900}
-        .v9-login h1{font-size:28px;margin:0}
-        .v9-login p{color:#8993a4;font-size:12px}
-        </style>
-        <div class="v9-login"><div class="v9-login-logo">R</div><h1>ROG AI</h1><p>Family Intelligence · workspace privado</p></div>''',
+        dedent(
+            '''\
+            <style>
+            [data-testid="stSidebar"]{display:none!important}
+            .block-container{max-width:440px!important;padding-top:10vh!important}
+            .v9-login{text-align:center;margin-bottom:24px}
+            .v9-login-logo{width:58px;height:58px;border-radius:18px;display:grid;place-items:center;margin:0 auto 16px;background:linear-gradient(135deg,#684bf0,#9b82ff);font-size:22px;font-weight:900}
+            .v9-login h1{font-size:28px;margin:0}
+            .v9-login p{color:#8993a4;font-size:12px}
+            </style>
+            <div class="v9-login"><div class="v9-login-logo">R</div><h1>ROG AI</h1><p>Family Intelligence · workspace privado</p></div>
+            '''
+        ).strip(),
         unsafe_allow_html=True,
     )
 
