@@ -120,6 +120,15 @@ def generate_temporary_password(admin: AuthIdentity, target_profile: str) -> str
             timeout=5.0,
         )
         response.raise_for_status()
+        privileged = create_privileged_client(Config.SUPABASE_URL, Config.SUPABASE_SERVICE_ROLE_KEY)
+        if privileged is None:
+            return ""
+        marked = privileged.table("rog_user_profiles").update({
+            "password_change_required": True,
+            "password_change_issued_at": metadata["rog_password_change_issued_at"],
+        }).eq("user_id", user["id"]).execute()
+        if not (getattr(marked, "data", None) or []):
+            return ""
         return temporary
     except Exception:
         return ""
@@ -137,24 +146,20 @@ def complete_required_password_change(identity: AuthIdentity, new_password: str)
             return False
         client.auth.set_session(identity.access_token, identity.refresh_token)
         response = client.auth.update_user({"password": str(new_password)})
-        return getattr(response, "user", None) is not None
+        if getattr(response, "user", None) is None:
+            return False
+        cleared = httpx.patch(
+            urljoin(Config.SUPABASE_URL.rstrip("/") + "/", "rest/v1/rog_user_profiles"),
+            headers={"apikey": Config.SUPABASE_PUBLISHABLE_KEY, "Authorization": f"Bearer {identity.access_token}", "Content-Type": "application/json", "Prefer": "return=representation"},
+            params={"user_id": f"eq.{identity.user_id}"},
+            json={"password_change_required": False, "password_change_issued_at": None},
+            timeout=5.0,
+        )
+        cleared.raise_for_status()
+        rows = cleared.json()
+        return isinstance(rows, list) and len(rows) == 1
     except Exception:
         return False
-
-
-def _requires_password_change(user, metadata: dict) -> bool:
-    if not bool(metadata.get("rog_password_change_required")):
-        return False
-    issued_raw = str(metadata.get("rog_password_change_issued_at") or "").strip()
-    updated_raw = getattr(user, "updated_at", None)
-    if not issued_raw or not updated_raw:
-        return True
-    try:
-        issued = datetime.fromisoformat(issued_raw.replace("Z", "+00:00"))
-        updated = updated_raw if isinstance(updated_raw, datetime) else datetime.fromisoformat(str(updated_raw).replace("Z", "+00:00"))
-        return updated <= issued
-    except Exception:
-        return True
 
 
 def _confirm_active(identity: AuthIdentity | None) -> AuthIdentity | None:
@@ -172,7 +177,7 @@ def _confirm_active(identity: AuthIdentity | None) -> AuthIdentity | None:
                 "Accept": "application/json",
             },
             params={
-                "select": "profile,role,active",
+                "select": "profile,role,active,password_change_required",
                 "user_id": f"eq.{identity.user_id}",
                 "profile": f"eq.{identity.profile.casefold()}",
                 "active": "eq.true",
@@ -193,7 +198,7 @@ def _confirm_active(identity: AuthIdentity | None) -> AuthIdentity | None:
             expires_at=identity.expires_at,
             aal=identity.aal,
             is_admin=str(rows[0].get("role") or "member").casefold() == "admin",
-            password_change_required=identity.password_change_required,
+            password_change_required=bool(rows[0].get("password_change_required")),
         )
     except Exception:
         return None
@@ -225,7 +230,7 @@ def _identity_from_user(user, *, access_token: str, refresh_token: str = "", exp
         expires_at=int(expires_at or 0),
         aal=aal,
         is_admin=role == "admin",
-        password_change_required=_requires_password_change(user, metadata),
+        password_change_required=False,
     )
 
 

@@ -28,14 +28,14 @@ from core.profile_access import allowed_namespaces, write_namespace
 from core.response_jobs import cancel_response_job, consume_response_job, drain_response_tokens, response_job_status, start_response_job
 from core.supabase_auth import auth_available_for
 from core.ui_v8 import AGENT_META, inject_design_system, render_agent_header, render_brand, render_profile, render_welcome
-from core.workspace_v8 import render_documents_view, render_memory_view, render_system_view
+from core.workspace_v8 import render_admin_view, render_documents_view, render_memory_view, render_system_view
 
 LOGGER = logging.getLogger("rog.v8")
 TRUST_COOKIE_NAME = "rog_ai_device"
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_DIRECT_CONTEXT_CHARS = 12_000
 MAX_AUTH_RESTORE_ATTEMPTS = 3
-VALID_VIEWS = {"chat", "memories", "documents", "system"}
+VALID_VIEWS = {"chat", "memories", "documents", "system", "admin"}
 QUICK_ACTIONS = {
     "orchestrator": ("Organizar meu dia", "Resumir prioridades", "Planejar um projeto"),
     "personal": ("Montar minha rotina", "Comparar uma decisão", "Criar uma checklist"),
@@ -107,6 +107,7 @@ def init_state() -> None:
     st.session_state.setdefault("auth_refresh_token", "")
     st.session_state.setdefault("is_admin", False)
     st.session_state.setdefault("password_change_required", False)
+    st.session_state.setdefault("auth_policy_checked", False)
     st.session_state.setdefault("generated_temporary_password", None)
     st.session_state.setdefault("auth_restore_attempts", 0)
     st.session_state.setdefault("shared_finance_upload", False)
@@ -117,7 +118,7 @@ def clear_private_state(*, preserve_restore_attempts: bool = True) -> None:
     active_job = st.session_state.get("active_response_job")
     if isinstance(active_job, dict):
         cancel_response_job(job_id=active_job.get("id", ""), profile=active_job.get("profile", ""), agent_id=active_job.get("agent_id", ""))
-    for key in ("authenticated", "current_profile", "current_agent", "current_view", "conversations", "conversations_by_profile", "memory_by_profile", "long_memory", "busy", "active_response_job", "streamed_response", "auth_backend", "auth_user_id", "auth_access_token", "auth_refresh_token", "is_admin", "password_change_required", "generated_temporary_password", "processed_events", "shared_finance_upload"):
+    for key in ("authenticated", "current_profile", "current_agent", "current_view", "conversations", "conversations_by_profile", "memory_by_profile", "long_memory", "busy", "active_response_job", "streamed_response", "auth_backend", "auth_user_id", "auth_access_token", "auth_refresh_token", "is_admin", "password_change_required", "auth_policy_checked", "generated_temporary_password", "processed_events", "shared_finance_upload"):
         st.session_state.pop(key, None)
     st.session_state.authenticated = False
     st.session_state.current_profile = None
@@ -304,6 +305,8 @@ def render_sidebar(profile: str, agent_id: str, conversations: dict[str, list], 
         for view, label in (("chat", "💬  Conversa"), ("memories", "🧠  Memórias"), ("documents", "📎  Documentos"), ("system", "⚙  Sistema")):
             if st.button(label, key=f"v8_view_{view}", type="primary" if st.session_state.current_view == view else "secondary", use_container_width=True):
                 _goto(view); st.rerun()
+        if st.session_state.get("is_admin") and st.button("🛡  Administração", key="v8_view_admin", type="primary" if st.session_state.current_view == "admin" else "secondary", use_container_width=True):
+            _goto("admin"); st.rerun()
         if st.button("＋  Nova conversa", key="v8_new_chat", use_container_width=True):
             if conversations.get(agent_id):
                 _persistence().archive_conversation(profile=profile, agent_id=agent_id, messages=conversations[agent_id])
@@ -486,6 +489,13 @@ def run() -> None:
     if not st.session_state.authenticated or st.session_state.current_profile not in ALLOWED_PROFILES:
         clear_private_state(preserve_restore_attempts=True); render_login(manager); st.stop()
     profile = st.session_state.current_profile
+    if not st.session_state.get("auth_policy_checked") and st.session_state.get("auth_access_token"):
+        from core.supabase_auth import validate_access_token
+        checked = validate_access_token(str(st.session_state.auth_access_token))
+        if checked and checked.user_id == str(st.session_state.get("auth_user_id") or ""):
+            st.session_state.password_change_required = checked.password_change_required
+            st.session_state.is_admin = checked.is_admin
+        st.session_state.auth_policy_checked = True
     if st.session_state.get("password_change_required"):
         from core.supabase_auth import AuthIdentity, complete_required_password_change
         st.title("Crie sua nova senha")
@@ -526,4 +536,8 @@ def run() -> None:
         from core.supabase_auth import AuthIdentity
         auth_identity = AuthIdentity(user_id=str(st.session_state.get("auth_user_id") or ""), profile=profile, access_token=str(st.session_state.get("auth_access_token") or ""), is_admin=bool(st.session_state.get("is_admin")))
         render_system_view(cookie_ready=bool(_cookie_secret() and manager), profile=profile, feedback=_persistence().feedback_summary(profile), is_admin=bool(st.session_state.get("is_admin")), auth_backend=str(st.session_state.get("auth_backend") or "legacy"), operations=_remote_operations_summary() if st.session_state.get("is_admin") else {}, auth_identity=auth_identity); return
+    if view == "admin":
+        if not st.session_state.get("is_admin"):
+            _goto("chat"); st.rerun()
+        render_admin_view(access_token=str(st.session_state.get("auth_access_token") or ""), current_user_id=str(st.session_state.get("auth_user_id") or ""), feedback=_persistence().feedback_summary(profile), operations=_remote_operations_summary()); return
     _render_chat(profile, agent_id, conversations)
