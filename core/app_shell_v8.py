@@ -112,6 +112,7 @@ def init_state() -> None:
     st.session_state.setdefault("generated_temporary_password", None)
     st.session_state.setdefault("auth_restore_attempts", 0)
     st.session_state.setdefault("shared_finance_upload", False)
+    st.session_state.setdefault("auth_cookie_refresh_required", False)
 
 
 def clear_private_state(*, preserve_restore_attempts: bool = True) -> None:
@@ -334,7 +335,10 @@ def render_navigation_bar(profile: str, agent_id: str, conversations: dict[str, 
             state_class = " is-busy" if st.session_state.busy else ""
             st.markdown(f'<div class="rog-top-context"><strong>{html.escape(agent_name)}</strong><span class="rog-inline-status{state_class}"><i></i>{status}</span><span class="rog-profile-context">{html.escape(profile.title())} · privado</span></div>', unsafe_allow_html=True)
         with menu:
-            st.toggle("Menu", key="v8_top_menu_open")
+            label = "Fechar" if st.session_state.get("v8_top_menu_open") else "Menu"
+            icon = ":material/close:" if st.session_state.get("v8_top_menu_open") else ":material/menu:"
+            if st.button(label, key="v8_top_menu_button", icon=icon, use_container_width=True):
+                st.session_state.v8_top_menu_open = not bool(st.session_state.get("v8_top_menu_open"))
     if not st.session_state.get("v8_top_menu_open"):
         return
     with st.container(key="rog_top_menu_panel"):
@@ -549,6 +553,10 @@ def _render_chat(profile: str, agent_id: str, conversations: dict[str, list]) ->
 
 def run() -> None:
     init_state(); inject_design_system(); manager = _cookie_manager(); _restore_trusted_device(manager)
+    if st.session_state.get("authenticated") and st.session_state.get("auth_cookie_refresh_required") and manager:
+        from core.login_v9 import persist_supabase_session
+        if persist_supabase_session(manager, str(st.session_state.get("current_profile") or ""), str(st.session_state.get("auth_refresh_token") or "")):
+            st.session_state.auth_cookie_refresh_required = False
     if not st.session_state.authenticated or st.session_state.current_profile not in ALLOWED_PROFILES:
         clear_private_state(preserve_restore_attempts=True); render_login(manager); st.stop()
     profile = st.session_state.current_profile

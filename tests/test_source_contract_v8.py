@@ -75,7 +75,7 @@ def test_sidebar_uses_clean_text_labels():
 
 
 def test_top_menu_uses_persistent_panel_instead_of_fixed_bar_popover():
-    assert 'st.toggle("Menu", key="v8_top_menu_open")' in SHELL
+    assert 'st.button(label, key="v8_top_menu_button"' in SHELL
     assert 'key="rog_top_menu_panel"' in SHELL
     assert 'with st.popover("Menu"' not in SHELL
     assert "st.session_state.v8_top_menu_open = False" in SHELL

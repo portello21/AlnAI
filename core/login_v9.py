@@ -14,6 +14,7 @@ from core.auth_v8 import (
     issue_device_token,
     verify_password,
 )
+from core.auth_session_cookie_v12 import seal_supabase_session
 from core.config import Config
 from core.supabase_auth import auth_available_for, migrate_legacy_password, sign_in_profile
 from core.operations_store import record_audit_async
@@ -68,8 +69,6 @@ def _persist_trusted_device(manager, profile: str) -> bool:
             same_site="strict",
             key=f"rog_v9_cookie_set_{profile.lower()}",
         )
-        # Streamlit component writes are client-side. Do not immediately tear
-        # down the component with st.rerun().
         time.sleep(COOKIE_SETTLE_SECONDS)
         return True
     except Exception as exc:
@@ -77,6 +76,25 @@ def _persist_trusted_device(manager, profile: str) -> bool:
         return False
 
 
+def persist_supabase_session(manager, profile: str, refresh_token: str) -> bool:
+    token = seal_supabase_session(profile, refresh_token, _cookie_secret())
+    if manager is None or not token:
+        return False
+    try:
+        manager.set(
+            TRUST_COOKIE_NAME,
+            token,
+            expires_at=datetime.now(timezone.utc) + timedelta(days=DEFAULT_DEVICE_TTL_DAYS),
+            path="/",
+            secure=True,
+            same_site="strict",
+            key=f"rog_v12_supabase_cookie_{profile.lower()}",
+        )
+        time.sleep(COOKIE_SETTLE_SECONDS)
+        return True
+    except Exception as exc:
+        LOGGER.warning("Supabase session cookie write failed: %s", type(exc).__name__)
+        return False
 def render_login_v9(manager) -> None:
     st.markdown(
         dedent(
@@ -144,8 +162,12 @@ def render_login_v9(manager) -> None:
             record_audit_async(event_type="auth.password_migrated", outcome="success", user_id=supabase_identity.user_id, profile=profile, metadata={"auth_backend": "supabase"})
         capture_product_event("login_success", user_id=supabase_identity.user_id if supabase_identity else "", properties={"auth_backend": "supabase" if supabase_identity else "legacy"})
 
-        persisted = _persist_trusted_device(manager, profile) if not supabase_identity else False
-        if not supabase_identity and not persisted:
+        persisted = (
+            persist_supabase_session(manager, profile, supabase_identity.refresh_token)
+            if supabase_identity
+            else _persist_trusted_device(manager, profile)
+        )
+        if not persisted:
             st.warning("Login realizado, mas este navegador não pôde ser marcado como dispositivo confiável.")
 
         st.rerun()
