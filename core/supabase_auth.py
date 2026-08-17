@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 import base64
 import json
+from urllib.parse import urljoin
+
+import httpx
 
 from core.auth_v8 import normalize_profile
 from core.config import Config
@@ -32,20 +35,41 @@ def auth_available_for(profile: str) -> bool:
 def _confirm_active(identity: AuthIdentity | None) -> AuthIdentity | None:
     if identity is None:
         return None
-    client = create_privileged_client(Config.SUPABASE_URL, Config.SUPABASE_SERVICE_ROLE_KEY)
-    if client is None:
-        return None
+    key = str(Config.SUPABASE_SERVICE_ROLE_KEY or "").strip()
     try:
-        response = (
-            client.table("rog_user_profiles")
-            .select("profile,role,active")
-            .eq("user_id", identity.user_id)
-            .eq("profile", identity.profile.casefold())
-            .eq("active", True)
-            .limit(1)
-            .execute()
-        )
-        rows = getattr(response, "data", None) or []
+        if key.startswith("sb_secret_"):
+            # Modern secret keys are not JWTs and must never be sent as a
+            # Bearer token. A direct server-side PostgREST request with only
+            # the apikey header preserves the secret-key bypass semantics.
+            response = httpx.get(
+                urljoin(Config.SUPABASE_URL.rstrip("/") + "/", "rest/v1/rog_user_profiles"),
+                headers={"apikey": key, "Accept": "application/json"},
+                params={
+                    "select": "profile,role,active",
+                    "user_id": f"eq.{identity.user_id}",
+                    "profile": f"eq.{identity.profile.casefold()}",
+                    "active": "eq.true",
+                    "limit": "1",
+                },
+                timeout=3.0,
+            )
+            response.raise_for_status()
+            payload = response.json()
+            rows = payload if isinstance(payload, list) else []
+        else:
+            client = create_privileged_client(Config.SUPABASE_URL, key)
+            if client is None:
+                return None
+            response = (
+                client.table("rog_user_profiles")
+                .select("profile,role,active")
+                .eq("user_id", identity.user_id)
+                .eq("profile", identity.profile.casefold())
+                .eq("active", True)
+                .limit(1)
+                .execute()
+            )
+            rows = getattr(response, "data", None) or []
         if not rows:
             return None
         return AuthIdentity(
