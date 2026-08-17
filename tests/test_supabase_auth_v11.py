@@ -3,7 +3,7 @@ import json
 from types import SimpleNamespace
 
 import core.supabase_auth as supabase_auth
-from core.supabase_auth import AuthIdentity, _confirm_active, _identity_from_user, generate_temporary_password, migrate_legacy_password
+from core.supabase_auth import AuthIdentity, _confirm_active, _identity_from_user, _requires_password_change, complete_required_password_change, generate_temporary_password, migrate_legacy_password
 from core.supabase_optional import is_publishable_key
 
 
@@ -61,6 +61,32 @@ def test_temporary_password_marks_exact_user_for_first_access_change(monkeypatch
     assert generate_temporary_password(admin, "Beatriz") == "temporary-password"
     assert captured["url"].endswith("/auth/v1/admin/users/user-2")
     assert captured["json"]["app_metadata"]["rog_password_change_required"] is True
+
+
+def test_password_change_uses_authenticated_user_session(monkeypatch):
+    identity = AuthIdentity(user_id="user-1", profile="Allan", access_token="access", refresh_token="refresh")
+    monkeypatch.setattr(supabase_auth, "validate_access_token", lambda token: identity)
+    calls = []
+
+    class Auth:
+        def set_session(self, access, refresh):
+            calls.append(("session", access, refresh))
+
+        def update_user(self, payload):
+            calls.append(("update", payload))
+            return SimpleNamespace(user=SimpleNamespace(id="user-1"))
+
+    monkeypatch.setattr(supabase_auth, "create_public_client", lambda *args: SimpleNamespace(auth=Auth()))
+    assert complete_required_password_change(identity, "a-secure-new-password")
+    assert calls == [("session", "access", "refresh"), ("update", {"password": "a-secure-new-password"})]
+
+
+def test_password_change_requirement_expires_after_user_update():
+    metadata = {"rog_password_change_required": True, "rog_password_change_issued_at": "2026-08-17T06:45:00+00:00"}
+    before = SimpleNamespace(updated_at="2026-08-17T06:44:59+00:00")
+    after = SimpleNamespace(updated_at="2026-08-17T06:45:01+00:00")
+    assert _requires_password_change(before, metadata)
+    assert not _requires_password_change(after, metadata)
 
 
 def test_active_profile_check_uses_user_jwt_and_publishable_key(monkeypatch):
