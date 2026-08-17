@@ -121,7 +121,7 @@ def render_documents_view(profile: str, agent_id: str, process_files, *, shared_
                         st.error("Não foi possível excluir o documento.")
 
 
-def render_system_view(*, cookie_ready: bool, profile: str, feedback: dict, is_admin: bool = False, auth_backend: str = "legacy", operations: dict | None = None) -> None:
+def render_system_view(*, cookie_ready: bool, profile: str, feedback: dict, is_admin: bool = False, auth_backend: str = "legacy", operations: dict | None = None, auth_identity=None) -> None:
     st.subheader("Sistema")
     st.caption("Diagnóstico seguro. Nenhuma chave ou credencial é exibida.")
 
@@ -153,6 +153,24 @@ def render_system_view(*, cookie_ready: bool, profile: str, feedback: dict, is_a
     st.info("Uma integração opcional indisponível não deve impedir a abertura da interface. O roteador tenta alternativas quando possível.")
 
     if is_admin:
+        st.markdown("#### Acesso da família")
+        st.caption("Gere uma senha temporária única. A pessoa será obrigada a escolher outra no primeiro acesso.")
+        target = st.selectbox("Perfil", ("Beatriz", "Tainan"), key="admin_temp_password_profile")
+        if st.button("Gerar senha temporária", key="admin_generate_temp_password", use_container_width=True):
+            from core.supabase_auth import generate_temporary_password
+            temporary = generate_temporary_password(auth_identity, target) if auth_identity else ""
+            if temporary:
+                st.session_state.generated_temporary_password = {"profile": target, "password": temporary}
+            else:
+                st.error("Não foi possível gerar a senha. Entre novamente como administrador e tente outra vez.")
+        generated = st.session_state.get("generated_temporary_password") or {}
+        if generated:
+            st.success(f"Senha temporária de {generated.get('profile')} gerada. Ela será mostrada somente nesta sessão.")
+            st.code(str(generated.get("password") or ""), language=None)
+            if st.button("Já copiei · ocultar", key="admin_hide_temp_password"):
+                st.session_state.generated_temporary_password = None
+                st.rerun()
+
         from core.telemetry import runtime_snapshot
 
         snapshot = runtime_snapshot()

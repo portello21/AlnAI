@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import base64
 import json
+import secrets
 from urllib.parse import urljoin
 
 import httpx
@@ -21,6 +22,7 @@ class AuthIdentity:
     expires_at: int = 0
     aal: str = "aal1"
     is_admin: bool = False
+    password_change_required: bool = False
 
 
 def auth_available_for(profile: str) -> bool:
@@ -51,6 +53,29 @@ def migrate_legacy_password(profile: str, password: str) -> bool:
     key = str(Config.SUPABASE_SERVICE_ROLE_KEY or "").strip()
     if not profile or not email or not password or not key:
         return False
+    match = _admin_user_for_profile(profile)
+    if match is None:
+        return False
+    user, headers = match
+    try:
+        update = httpx.put(
+            urljoin(Config.SUPABASE_URL.rstrip("/") + "/", f"auth/v1/admin/users/{user['id']}"),
+            headers={**headers, "Content-Type": "application/json"},
+            json={"password": password},
+            timeout=5.0,
+        )
+        update.raise_for_status()
+        return True
+    except Exception:
+        return False
+
+
+def _admin_user_for_profile(profile: str) -> tuple[dict, dict] | None:
+    profile = normalize_profile(profile)
+    email = Config.profile_auth_email(profile).strip().casefold() if profile else ""
+    key = str(Config.SUPABASE_SERVICE_ROLE_KEY or "").strip()
+    if not profile or not email or not key:
+        return None
     headers = _admin_headers(key)
     try:
         response = httpx.get(
@@ -68,15 +93,56 @@ def migrate_legacy_password(profile: str, password: str) -> bool:
             and str(user.get("email") or "").strip().casefold() == email
             and normalize_profile((user.get("app_metadata") or {}).get("rog_profile")) == profile
         ]
-        if len(matches) != 1 or not matches[0].get("id"):
-            return False
-        update = httpx.put(
-            urljoin(Config.SUPABASE_URL.rstrip("/") + "/", f"auth/v1/admin/users/{matches[0]['id']}"),
+        return (matches[0], headers) if len(matches) == 1 and matches[0].get("id") else None
+    except Exception:
+        return None
+
+
+def generate_temporary_password(admin: AuthIdentity, target_profile: str) -> str:
+    """Rotate one exact linked account after revalidating the admin session."""
+    verified = validate_access_token(admin.access_token)
+    if verified is None or verified.user_id != admin.user_id or not verified.is_admin:
+        return ""
+    match = _admin_user_for_profile(target_profile)
+    if match is None:
+        return ""
+    user, headers = match
+    temporary = secrets.token_urlsafe(15)
+    metadata = dict(user.get("app_metadata") or {})
+    metadata["rog_password_change_required"] = True
+    try:
+        response = httpx.put(
+            urljoin(Config.SUPABASE_URL.rstrip("/") + "/", f"auth/v1/admin/users/{user['id']}"),
             headers={**headers, "Content-Type": "application/json"},
-            json={"password": password},
+            json={"password": temporary, "app_metadata": metadata},
             timeout=5.0,
         )
-        update.raise_for_status()
+        response.raise_for_status()
+        return temporary
+    except Exception:
+        return ""
+
+
+def complete_required_password_change(identity: AuthIdentity, new_password: str) -> bool:
+    if len(str(new_password or "")) < 12:
+        return False
+    verified = validate_access_token(identity.access_token)
+    if verified is None or verified.user_id != identity.user_id or verified.profile != identity.profile:
+        return False
+    match = _admin_user_for_profile(identity.profile)
+    if match is None or str(match[0].get("id")) != identity.user_id:
+        return False
+    user, headers = match
+    metadata = dict(user.get("app_metadata") or {})
+    metadata["rog_password_change_required"] = False
+    try:
+        response = httpx.put(
+            urljoin(Config.SUPABASE_URL.rstrip("/") + "/", f"auth/v1/admin/users/{identity.user_id}"),
+            headers={**headers, "Content-Type": "application/json"},
+            json={"password": str(new_password), "app_metadata": metadata},
+            timeout=5.0,
+        )
+        response.raise_for_status()
         return True
     except Exception:
         return False
@@ -130,6 +196,7 @@ def _confirm_active(identity: AuthIdentity | None) -> AuthIdentity | None:
             expires_at=identity.expires_at,
             aal=identity.aal,
             is_admin=str(rows[0].get("role") or "member").casefold() == "admin",
+            password_change_required=identity.password_change_required,
         )
     except Exception:
         return None
@@ -161,6 +228,7 @@ def _identity_from_user(user, *, access_token: str, refresh_token: str = "", exp
         expires_at=int(expires_at or 0),
         aal=aal,
         is_admin=role == "admin",
+        password_change_required=bool(metadata.get("rog_password_change_required")),
     )
 
 
@@ -189,7 +257,7 @@ def validate_access_token(token: str) -> AuthIdentity | None:
     token = str(token or "").strip()
     if not token:
         return None
-    client = create_privileged_client(Config.SUPABASE_URL, Config.SUPABASE_SERVICE_ROLE_KEY)
+    client = create_public_client(Config.SUPABASE_URL, Config.SUPABASE_PUBLISHABLE_KEY)
     if client is None:
         return None
     try:
