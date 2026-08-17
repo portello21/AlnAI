@@ -12,7 +12,7 @@ st.set_page_config(
     page_title="ROG AI",
     page_icon="✦",
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="auto",
 )
 
 Config.validate()
