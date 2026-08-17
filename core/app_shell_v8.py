@@ -504,6 +504,7 @@ def run() -> None:
                     user_id=str(st.session_state.get("auth_user_id") or ""),
                     profile=profile,
                     access_token=str(st.session_state.get("auth_access_token") or ""),
+                    refresh_token=str(st.session_state.get("auth_refresh_token") or ""),
                     is_admin=bool(st.session_state.get("is_admin")),
                     password_change_required=True,
                 )
