@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import importlib.util
 import hashlib
+import html
 from datetime import datetime, timedelta, timezone
 
 import streamlit as st
@@ -27,7 +28,7 @@ from core.memory_service_v8 import FamilyMemoryService
 from core.profile_access import allowed_namespaces, write_namespace
 from core.response_jobs import cancel_response_job, consume_response_job, drain_response_tokens, response_job_status, start_response_job
 from core.supabase_auth import auth_available_for
-from core.ui_v8 import AGENT_META, inject_design_system, render_agent_header, render_brand, render_profile, render_welcome
+from core.ui_v8 import AGENT_META, MARK_SVG, inject_design_system, render_agent_header, render_brand, render_profile, render_welcome
 from core.workspace_v8 import render_admin_view, render_creative_view, render_documents_view, render_memory_view, render_system_view
 
 LOGGER = logging.getLogger("rog.v8")
@@ -321,6 +322,52 @@ def render_sidebar(profile: str, agent_id: str, conversations: dict[str, list], 
         if st.button("Sair", key="v8_logout", use_container_width=True): _forget_device(manager); st.rerun()
 
 
+def render_navigation_bar(profile: str, agent_id: str, conversations: dict[str, list], manager) -> None:
+    """Permanent navigation that remains usable even when Streamlit's sidebar is hidden."""
+    _, agent_name, _ = AGENT_META.get(agent_id, AGENT_META["orchestrator"])
+    with st.container(key="rog_top_nav"):
+        brand, context, menu = st.columns([1.15, 1.7, .65], vertical_alignment="center")
+        with brand:
+            st.markdown(f'<div class="rog-top-brand"><div class="rog-logo">{MARK_SVG}</div><div><strong>ROG AI</strong><span>FAMILY INTELLIGENCE</span></div></div>', unsafe_allow_html=True)
+        with context:
+            st.markdown(f'<div class="rog-top-context"><strong>{html.escape(agent_name)}</strong>{html.escape(profile.title())} · workspace privado</div>', unsafe_allow_html=True)
+        with menu:
+            with st.popover("☰  Menu", use_container_width=True):
+                st.caption("NAVEGAÇÃO")
+                agent_ids = list(AGENT_META)
+                selected_agent = st.selectbox("Assistente", agent_ids, index=agent_ids.index(agent_id), format_func=lambda aid: AGENT_META[aid][1], key="v8_top_agent")
+                if st.button("Abrir assistente", key="v8_top_open_agent", type="primary", use_container_width=True, disabled=bool(st.session_state.busy)):
+                    st.session_state.current_agent = selected_agent
+                    _goto("chat")
+                    st.rerun()
+                view_columns = st.columns(2)
+                for index, (target, label) in enumerate((("chat", "Conversa"), ("memories", "Memórias"), ("documents", "Documentos"), ("creative", "Estúdio"), ("system", "Sistema"))):
+                    with view_columns[index % 2]:
+                        if st.button(label, key=f"v8_top_view_{target}", type="primary" if st.session_state.current_view == target else "secondary", use_container_width=True):
+                            _goto(target)
+                            st.rerun()
+                if st.session_state.get("is_admin") and st.button("Administração", key="v8_top_admin", use_container_width=True):
+                    _goto("admin")
+                    st.rerun()
+                st.divider()
+                if st.button("＋ Nova conversa", key="v8_top_new_chat", use_container_width=True):
+                    if conversations.get(agent_id):
+                        _persistence().archive_conversation(profile=profile, agent_id=agent_id, messages=conversations[agent_id])
+                    conversations[agent_id] = []
+                    persist_conversations(profile, conversations)
+                    _goto("chat")
+                    st.rerun()
+                account_a, account_b = st.columns(2)
+                with account_a:
+                    if st.button("Trocar perfil", key="v8_top_switch", use_container_width=True):
+                        _forget_device(manager)
+                        st.rerun()
+                with account_b:
+                    if st.button("Sair", key="v8_top_logout", use_container_width=True):
+                        _forget_device(manager)
+                        st.rerun()
+
+
 def _process_files(profile: str, agent_id: str, files: list) -> tuple[list[str], list[str]]:
     from core.vector_rag import add_document_to_rag
     notes, direct_context = [], []
@@ -529,6 +576,7 @@ def run() -> None:
     view = st.session_state.current_view if st.session_state.current_view in VALID_VIEWS else "chat"
     st.session_state.current_agent = agent_id; st.session_state.current_view = view; conversations = profile_conversations(profile)
     render_sidebar(profile, agent_id, conversations, manager)
+    render_navigation_bar(profile, agent_id, conversations, manager)
     shared_scope = bool(st.session_state.shared_finance_upload) and agent_id == "finance" and profile.lower() in {"allan", "beatriz"}
     if view == "memories": render_memory_view(profile, agent_id, _family_memory(), shared_finance=shared_scope); return
     if view == "documents": render_documents_view(profile, agent_id, _process_files, shared_finance=shared_scope); return
