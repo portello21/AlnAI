@@ -47,11 +47,12 @@ def test_collapsed_sidebar_has_current_streamlit_reopen_control():
     assert 'initial_sidebar_state="auto"' in APP
 
 
-def test_permanent_navigation_does_not_depend_on_sidebar():
+def test_navigation_uses_sidebar_and_compact_chat_header():
     assert 'key="rog_top_nav"' in SHELL
     assert "render_navigation_bar(profile, agent_id, conversations, manager)" in SHELL
-    for action in ("Assistente", "Memórias", "Documentos", "Sistema", "Nova conversa", "Trocar perfil", "Sair"):
+    for action in ("Memórias", "Documentos", "Sistema", "Nova conversa", "Trocar perfil", "Sair"):
         assert action in SHELL
+    assert 'key="rog_top_menu_panel"' not in SHELL
 
 
 def test_original_brand_assets_exist():
@@ -74,8 +75,8 @@ def test_sidebar_uses_clean_text_labels():
     assert 'initial_sidebar_state="auto"' in APP
 
 
-def test_top_menu_uses_persistent_panel_instead_of_fixed_bar_popover():
-    assert 'st.button(label, key="v8_top_menu_button"' in SHELL
-    assert 'key="rog_top_menu_panel"' in SHELL
-    assert 'with st.popover("Menu"' not in SHELL
-    assert "st.session_state.v8_top_menu_open = False" in SHELL
+def test_top_bar_has_no_blocking_navigation_panel():
+    assert 'key="v13_top_new_chat"' in SHELL
+    assert 'key="rog_top_menu_panel"' not in SHELL
+    assert 'v8_top_menu_open' not in SHELL
+    assert "Navigation shell v13" in UI
