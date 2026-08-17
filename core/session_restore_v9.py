@@ -5,7 +5,7 @@ import streamlit as st
 from core.auth_v8 import ALLOWED_PROFILES, credential_version, verify_device_token
 from core.trusted_device_v9 import read_streamlit_context_cookie
 
-TRUST_COOKIE_NAME = "rog_ai_v8_device"
+TRUST_COOKIE_NAME = "rog_ai_device"
 
 
 def _secret(name: str) -> str:

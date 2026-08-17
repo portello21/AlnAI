@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 import streamlit as st
 
 
@@ -18,6 +19,13 @@ def _setting(name: str, default: str = "") -> str:
 def _bool_setting(name: str, default: bool = False) -> bool:
     raw = _setting(name, "true" if default else "false").casefold()
     return raw in {"1", "true", "yes", "on"}
+
+
+def _float_setting(name: str, default: float) -> float:
+    try:
+        return max(1.0, float(_setting(name, str(default))))
+    except (TypeError, ValueError):
+        return default
 
 
 class Config:
@@ -40,8 +48,20 @@ class Config:
     NVIDIA_BASE_URL = _setting("NVIDIA_BASE_URL", "https://integrate.api.nvidia.com/v1")
     NVIDIA_MODEL = _setting(
         "NVIDIA_MODEL",
-        "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+        "nvidia/nemotron-3-nano-30b-a3b",
     )
+    NVIDIA_TIMEOUT_SECONDS = _float_setting("NVIDIA_TIMEOUT_SECONDS", 20.0)
+
+    # Streamlit Community Cloud currently checks projects out below /mount/src
+    # and exposes STREAMLIT_SHARING_MODE. ROG_CLOUD_MODE is an explicit escape
+    # hatch for other hosts and local testing.
+    _cloud_override = _setting("ROG_CLOUD_MODE", "auto").casefold()
+    IS_CLOUD = (
+        _cloud_override in {"1", "true", "yes", "on"}
+        if _cloud_override != "auto"
+        else bool(os.getenv("STREAMLIT_SHARING_MODE") or str(Path.cwd()).startswith("/mount/src/"))
+    )
+    SUPABASE_SYNC_MODE = _setting("SUPABASE_SYNC_MODE", "background").casefold()
 
     @classmethod
     def status(cls) -> dict[str, bool]:

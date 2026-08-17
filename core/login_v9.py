@@ -16,7 +16,7 @@ from core.auth_v8 import (
 )
 
 LOGGER = logging.getLogger("rog.v9.auth")
-TRUST_COOKIE_NAME = "rog_ai_v8_device"
+TRUST_COOKIE_NAME = "rog_ai_device"
 COOKIE_SETTLE_SECONDS = 0.8
 
 
@@ -59,6 +59,9 @@ def _persist_trusted_device(manager, profile: str) -> bool:
             TRUST_COOKIE_NAME,
             token,
             expires_at=datetime.now(timezone.utc) + timedelta(days=DEFAULT_DEVICE_TTL_DAYS),
+            path="/",
+            secure=True,
+            same_site="strict",
             key=f"rog_v9_cookie_set_{profile.lower()}",
         )
         # Streamlit component writes are client-side. Do not immediately tear

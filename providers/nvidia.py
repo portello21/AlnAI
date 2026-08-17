@@ -10,7 +10,7 @@ def chat_nvidia(
     messages: list,
     temperature: float = 0.2,
     max_tokens: int = 4096,
-    timeout: float = 90.0,
+    timeout: float = 20.0,
 ) -> str:
     """Call an OpenAI-compatible NVIDIA NIM endpoint.
 
@@ -30,7 +30,9 @@ def chat_nvidia(
         "max_tokens": max_tokens,
     }
     try:
-        with httpx.Client(timeout=timeout) as client:
+        limits = httpx.Limits(max_connections=4, max_keepalive_connections=2)
+        request_timeout = httpx.Timeout(timeout, connect=min(5.0, timeout))
+        with httpx.Client(timeout=request_timeout, limits=limits) as client:
             response = client.post(
                 url,
                 headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},

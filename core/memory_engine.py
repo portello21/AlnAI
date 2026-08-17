@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Optional
 
 from core.config import Config
-from supabase import create_client
+from core.supabase_optional import create_optional_client
 
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -73,11 +73,7 @@ class MemoryEngine:
         self.client = None
 
         try:
-            if Config.SUPABASE_URL and Config.SUPABASE_KEY:
-                self.client = create_client(
-                    Config.SUPABASE_URL,
-                    Config.SUPABASE_KEY,
-                )
+            self.client = create_optional_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
         except Exception:
             self.client = None
 
@@ -261,7 +257,8 @@ class MemoryEngine:
             "last_used_at": None,
         }
 
-        self._sync_remote(record)
+        if self.client and Config.SUPABASE_SYNC_MODE != "off":
+            threading.Thread(target=self._sync_remote, args=(record,), daemon=True).start()
 
         return record
 
@@ -814,12 +811,13 @@ class MemoryEngine:
 
                 changed = cursor.rowcount > 0
 
-        if changed and self.client:
+        if changed and self.client and Config.SUPABASE_SYNC_MODE != "off":
 
-            try:
-                self.client.table(
+            def deactivate_remote() -> None:
+                try:
+                    self.client.table(
                     TABLE_NAME
-                ).update(
+                    ).update(
                     {
                         "active": False,
                         "updated_at": now,
@@ -827,10 +825,11 @@ class MemoryEngine:
                 ).eq(
                     "id",
                     memory_id
-                ).execute()
+                    ).execute()
+                except Exception:
+                    pass
 
-            except Exception:
-                pass
+            threading.Thread(target=deactivate_remote, daemon=True).start()
 
         return changed
 

@@ -5,6 +5,7 @@ import re
 from typing import Optional
 
 from core.context_security import guard_untrusted_context
+from core.config import Config
 from core.llm_router import chat_with_metadata, local_available
 from core.memory_context import MemoryContextBuilder
 from core.memory_engine import MemoryEngine
@@ -278,10 +279,13 @@ def execute_agent(
         extra_context=combined_context,
     )
 
-    try:
-        local_is_available = bool(local_available())
-    except Exception:
+    if Config.IS_CLOUD:
         local_is_available = False
+    else:
+        try:
+            local_is_available = bool(local_available())
+        except Exception:
+            local_is_available = False
 
     routing_decision = _model_router.decide(
         agent_id=selected_agent,

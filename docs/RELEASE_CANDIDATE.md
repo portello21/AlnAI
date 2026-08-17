@@ -25,12 +25,20 @@ Optional integrations:
 ```toml
 DEEPSEEK_API_KEY = "..."
 NVIDIA_API_KEY = "..."
-NVIDIA_MODEL = "..."
+# Optional override; default is nvidia/nemotron-3-nano-30b-a3b
+NVIDIA_MODEL = "nvidia/nemotron-3-nano-30b-a3b"
 SUPABASE_URL = "..."
 SUPABASE_KEY = "..."
+SUPABASE_SYNC_MODE = "background" # or "off"
 ```
 
 Paid providers remain guarded by `ROG_ALLOW_PAID=false` unless the owner explicitly opts in.
+
+## Streamlit Cloud runtime
+
+`requirements.txt` is the lean cloud profile. Install `requirements-local.txt` only on a workstation that needs local embeddings, Whisper, Plotly, Google APIs or Torch/Torchvision. The repository targets Python 3.12 via `.python-version`. If an existing Streamlit app remains pinned to Python 3.14, recreate the app from this repository/branch and choose Python 3.12; Community Cloud may not change the Python runtime of an existing deployment in place.
+
+Supabase is an optional background mirror with a three-second network timeout. SQLite/in-memory session state remains the immediate fallback, and a failed mirror is paused instead of delaying every chat message.
 
 ## Local release test
 

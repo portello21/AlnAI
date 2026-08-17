@@ -4,13 +4,10 @@ import json
 import logging
 import sqlite3
 import threading
+import time
 
 from core.config import Config
-
-try:
-    from supabase import create_client
-except Exception:  # graceful local/test fallback
-    create_client = None
+from core.supabase_optional import create_optional_client
 
 LOGGER = logging.getLogger("rog.persistence")
 
@@ -22,9 +19,10 @@ class PersistenceManager:
         self.db = db_path
         self.lock = threading.RLock()
         self.client = None
+        self._remote_blocked_until = 0.0
+        self._remote_refresh_started = False
         try:
-            if create_client and Config.SUPABASE_URL and Config.SUPABASE_KEY:
-                self.client = create_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
+            self.client = create_optional_client(Config.SUPABASE_URL, Config.SUPABASE_KEY)
         except Exception as exc:
             LOGGER.warning("Supabase initialization failed: %s", type(exc).__name__)
         self._init_sqlite()
@@ -74,16 +72,21 @@ class PersistenceManager:
             except Exception as exc:
                 LOGGER.error("SQLite persistence failed: %s", type(exc).__name__)
 
-            if self.client:
-                for profile, data in records.items():
-                    try:
-                        self.client.table("long_term_memory").upsert({
-                            "profile": profile,
-                            "user_facts": data["user_facts"],
-                            "history": data["history"],
-                        }).execute()
-                    except Exception as exc:
-                        LOGGER.warning("Supabase save failed for profile %s: %s", profile, type(exc).__name__)
+            if self.client and Config.SUPABASE_SYNC_MODE != "off" and time.monotonic() >= self._remote_blocked_until:
+                threading.Thread(target=self._save_supabase, args=(records,), daemon=True).start()
+
+    def _save_supabase(self, records: dict) -> None:
+        for profile, data in records.items():
+            try:
+                self.client.table("long_term_memory").upsert({
+                    "profile": profile,
+                    "user_facts": data["user_facts"],
+                    "history": data["history"],
+                }).execute()
+            except Exception as exc:
+                self._remote_blocked_until = time.monotonic() + 60.0
+                LOGGER.warning("Supabase mirror paused after %s", type(exc).__name__)
+                return
 
     def _load_sqlite(self) -> dict:
         data = {}
@@ -121,27 +124,28 @@ class PersistenceManager:
                 if key:
                     output[key] = self._normalize_record(row)
         except Exception as exc:
-            LOGGER.warning("Supabase load failed: %s", type(exc).__name__)
+            self._remote_blocked_until = time.monotonic() + 60.0
+            LOGGER.warning("Supabase mirror paused after %s", type(exc).__name__)
         return output
+
+    def _refresh_remote_cache(self) -> None:
+        remote = self._load_supabase()
+        if not remote:
+            return
+        try:
+            with self.lock, sqlite3.connect(self.db, timeout=2.0) as conn:
+                for profile, data in remote.items():
+                    conn.execute(
+                        "INSERT OR REPLACE INTO memory(profile, user_facts, history) VALUES (?, ?, ?)",
+                        (profile, json.dumps(data["user_facts"], ensure_ascii=False), json.dumps(data["history"], ensure_ascii=False)),
+                    )
+        except Exception as exc:
+            LOGGER.warning("SQLite cache warm failed: %s", type(exc).__name__)
 
     def load_data(self):
         with self.lock:
             local = self._load_sqlite()
-            remote = self._load_supabase()
-            if remote:
-                local.update(remote)
-                # Warm the local cache without a second network write.
-                try:
-                    with sqlite3.connect(self.db, timeout=10.0) as conn:
-                        for profile, data in remote.items():
-                            conn.execute(
-                                "INSERT OR REPLACE INTO memory(profile, user_facts, history) VALUES (?, ?, ?)",
-                                (
-                                    profile,
-                                    json.dumps(data["user_facts"], ensure_ascii=False),
-                                    json.dumps(data["history"], ensure_ascii=False),
-                                ),
-                            )
-                except Exception as exc:
-                    LOGGER.warning("SQLite cache warm failed: %s", type(exc).__name__)
+            if self.client and Config.SUPABASE_SYNC_MODE != "off" and not self._remote_refresh_started:
+                self._remote_refresh_started = True
+                threading.Thread(target=self._refresh_remote_cache, daemon=True).start()
             return local

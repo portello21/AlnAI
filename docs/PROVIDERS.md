@@ -25,8 +25,9 @@ DEEPSEEK_API_KEY = "..."
 
 # NVIDIA development endpoint / NIM
 NVIDIA_API_KEY = "..."
-NVIDIA_MODEL = "<explicit model id from NVIDIA API Catalog>"
+NVIDIA_MODEL = "nvidia/nemotron-3-nano-30b-a3b" # default; optional override
 # NVIDIA_BASE_URL = "https://integrate.api.nvidia.com/v1"
+NVIDIA_TIMEOUT_SECONDS = 20
 
 # Future paid providers; having a key is not sufficient while ROG_ALLOW_PAID=false
 OPENAI_API_KEY = "..."
@@ -37,11 +38,11 @@ Never commit these values.
 
 ## Routing
 
-In `auto`, ROG prefers local Qwen, then an explicitly configured NVIDIA development provider. Existing calls that explicitly request a `deepseek-*` model retain backward compatibility when a DeepSeek key is configured. Provider failures feed an in-process circuit breaker so a repeatedly failing endpoint is temporarily skipped.
+In `auto`, ROG prefers NVIDIA. On Streamlit Cloud it never probes Docker and returns a short error after the hosted timeout. Locally it may fall back to Qwen/Docker, preserving the workstation workflow. Existing paid providers still require `ROG_ALLOW_PAID=true`. Provider failures feed an in-process circuit breaker so a repeatedly failing endpoint is temporarily skipped.
 
 ## NVIDIA
 
-NVIDIA NIM exposes OpenAI-compatible chat endpoints. NVIDIA documents free NIM offerings and free serverless APIs for development, but quotas and terms are external to this repository and can change. For that reason NVIDIA remains opt-in and requires an explicit model ID rather than silently selecting a remote model.
+NVIDIA NIM exposes OpenAI-compatible chat endpoints. The only required secret is exactly `NVIDIA_API_KEY`. The hosted default is `nvidia/nemotron-3-nano-30b-a3b` at `https://integrate.api.nvidia.com/v1`; `NVIDIA_MODEL` remains an optional override. NVIDIA trial quotas and terms are external to this repository and can change.
 
 ## OpenAI / Codex and Anthropic / Claude
 

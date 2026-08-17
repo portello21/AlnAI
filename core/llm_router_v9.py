@@ -79,6 +79,7 @@ def _nvidia(requested_model: str, messages: list, temperature: float, max_tokens
         messages,
         temperature,
         max_tokens or 4096,
+        timeout=Config.NVIDIA_TIMEOUT_SECONDS,
     )
     return _finish(value, provider, requested_model, Config.NVIDIA_MODEL, fallback)
 
@@ -101,6 +102,11 @@ def attempt_order(requested_model: str) -> tuple[str, ...]:
     and only then paid DeepSeek when the explicit cost guard permits it.
     """
     mode = Config.PROVIDER_MODE
+    if Config.IS_CLOUD:
+        # A hosted Streamlit process has no Docker Model Runner. Once NVIDIA
+        # fails, return promptly instead of probing localhost and compounding
+        # the user-visible timeout. Paid providers still require explicit opt-in.
+        return ("nvidia", "deepseek") if Config.ALLOW_PAID_PROVIDERS else ("nvidia",)
     if mode in {"local", "qwen"}:
         return ("local",)
     if mode == "nvidia":
@@ -130,7 +136,7 @@ def chat_with_metadata(model: str, messages: list, temperature: float = 0.2, max
             return result
         failures.append({"provider": candidate, "error_type": result.get("error_type") or "provider_error"})
     return {
-        "content": "Nenhum provider de IA permitido e disponível respondeu. Verifique NVIDIA NIM, o modelo local ou as integrações configuradas.",
+        "content": "A IA hospedada está temporariamente indisponível. Tente novamente em instantes.",
         "provider": "none",
         "requested_model": requested_model,
         "model": None,

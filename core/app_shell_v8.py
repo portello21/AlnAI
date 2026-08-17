@@ -27,7 +27,7 @@ from core.ui_v8 import AGENT_META, inject_design_system, render_agent_header, re
 from core.workspace_v8 import render_documents_view, render_memory_view, render_system_view
 
 LOGGER = logging.getLogger("rog.v8")
-TRUST_COOKIE_NAME = "rog_ai_v8_device"
+TRUST_COOKIE_NAME = "rog_ai_device"
 MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_DIRECT_CONTEXT_CHARS = 12_000
 MAX_AUTH_RESTORE_ATTEMPTS = 3
