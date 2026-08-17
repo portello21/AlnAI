@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import importlib.util
 from datetime import datetime, timedelta, timezone
 
 import streamlit as st
@@ -32,6 +33,16 @@ MAX_FILE_BYTES = 20 * 1024 * 1024
 MAX_DIRECT_CONTEXT_CHARS = 12_000
 MAX_AUTH_RESTORE_ATTEMPTS = 3
 VALID_VIEWS = {"chat", "memories", "documents", "system"}
+QUICK_ACTIONS = {
+    "orchestrator": ("Organizar meu dia", "Resumir prioridades", "Planejar um projeto"),
+    "personal": ("Montar minha rotina", "Comparar uma decisão", "Criar uma checklist"),
+    "finance": ("Criar um orçamento", "Analisar um gasto", "Planejar uma meta"),
+    "tech": ("Revisar um código", "Diagnosticar um erro", "Planejar uma arquitetura"),
+    "coach": ("Criar um treino", "Rever meus hábitos", "Definir uma meta"),
+    "business": ("Validar uma ideia", "Montar um plano", "Analisar uma estratégia"),
+    "english": ("Practice conversation", "Review my writing", "Build a study plan"),
+    "document": ("Resumir um documento", "Extrair pontos-chave", "Comparar arquivos"),
+}
 
 
 @st.cache_resource
@@ -221,13 +232,13 @@ def render_sidebar(profile: str, agent_id: str, conversations: dict[str, list], 
                 _goto(view); st.rerun()
         if st.button("＋  Nova conversa", key="v8_new_chat", use_container_width=True):
             conversations[agent_id] = []; persist_conversations(profile, conversations); _goto("chat"); st.rerun()
-        if agent_id == "finance" and profile in {"Allan", "Beatriz"}:
+        if agent_id == "finance" and profile.lower() in {"allan", "beatriz"}:
             st.toggle("Financeiro compartilhado", key="shared_finance_upload", help="Quando ativo, documentos e comandos explícitos de memória usam apenas o espaço financeiro compartilhado Allan ↔ Beatriz.")
         else:
             st.session_state.shared_finance_upload = False
         st.divider()
         if st.button("Trocar perfil", key="v8_switch_profile", use_container_width=True): _forget_device(manager); st.rerun()
-        if st.button("Esquecer este dispositivo", key="v8_forget_device", use_container_width=True): _forget_device(manager); st.rerun()
+        if st.button("Sair", key="v8_logout", use_container_width=True): _forget_device(manager); st.rerun()
 
 
 def _process_files(profile: str, agent_id: str, files: list) -> tuple[list[str], list[str]]:
@@ -308,8 +319,15 @@ def process_submission(profile: str, agent_id: str, conversations: dict[str, lis
 
 
 def _render_chat(profile: str, agent_id: str, conversations: dict[str, list]) -> None:
-    history = conversations[agent_id]; render_agent_header(agent_id)
-    if not history: render_welcome(agent_id, profile)
+    history = conversations[agent_id]; render_agent_header(agent_id, busy=bool(st.session_state.busy))
+    if not history:
+        render_welcome(agent_id, profile)
+        st.markdown('<div class="rog-quick-label">Ações rápidas</div>', unsafe_allow_html=True)
+        columns = st.columns(3)
+        for column, prompt in zip(columns, QUICK_ACTIONS[agent_id]):
+            with column:
+                if st.button(prompt, key=f"v8_quick_{agent_id}_{prompt}", use_container_width=True, disabled=bool(st.session_state.busy)):
+                    process_submission(profile, agent_id, conversations, prompt)
     for message in history:
         role = message.get("role")
         with st.chat_message("user" if role == "user" else "assistant"):
@@ -317,7 +335,8 @@ def _render_chat(profile: str, agent_id: str, conversations: dict[str, list]) ->
                 runtime = message.get("runtime") or {}; label = runtime.get("agent_name", "ROG AI"); model = runtime.get("model", ""); provider = runtime.get("provider", ""); meta = " · ".join(str(x) for x in (label, model, provider) if x)
                 if meta: st.caption(meta)
             st.markdown(message.get("content", ""))
-    submission = st.chat_input("Mensagem para o ROG AI…", key="v8_chat_input", disabled=bool(st.session_state.busy), accept_file="multiple", file_type=["txt","md","csv","json","pdf","docx","png","jpg","jpeg","webp"], max_upload_size=20, accept_audio=True)
+    audio_ready = importlib.util.find_spec("whisper") is not None
+    submission = st.chat_input("Mensagem para o ROG AI…", key="v8_chat_input", disabled=bool(st.session_state.busy), accept_file="multiple", file_type=["txt","md","csv","json","pdf","docx","png","jpg","jpeg","webp"], max_upload_size=20, accept_audio=audio_ready)
     if submission is not None: process_submission(profile, agent_id, conversations, submission)
 
 
@@ -330,7 +349,7 @@ def run() -> None:
     view = st.session_state.current_view if st.session_state.current_view in VALID_VIEWS else "chat"
     st.session_state.current_agent = agent_id; st.session_state.current_view = view; conversations = profile_conversations(profile)
     render_sidebar(profile, agent_id, conversations, manager)
-    shared_scope = bool(st.session_state.shared_finance_upload) and agent_id == "finance" and profile in {"Allan", "Beatriz"}
+    shared_scope = bool(st.session_state.shared_finance_upload) and agent_id == "finance" and profile.lower() in {"allan", "beatriz"}
     if view == "memories": render_memory_view(profile, agent_id, _family_memory(), shared_finance=shared_scope); return
     if view == "documents": render_documents_view(profile, agent_id, _process_files, shared_finance=shared_scope); return
     if view == "system": render_system_view(cookie_ready=bool(_cookie_secret() and manager)); return
